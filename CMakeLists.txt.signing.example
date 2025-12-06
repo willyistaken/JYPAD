@@ -1,0 +1,61 @@
+# 代碼簽名配置示例
+# 將以下內容添加到 CMakeLists.txt 的末尾（在 target_link_libraries 之後）
+
+# 代碼簽名配置（僅在 Release 模式下）
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    # 查找 codesign 工具
+    find_program(CODESIGN_EXECUTABLE codesign)
+    
+    if(CODESIGN_EXECUTABLE)
+        # 設置簽名身份（替換為您的 Developer ID）
+        # 執行以下命令查找您的證書：
+        # security find-identity -v -p codesigning | grep "Developer ID Application"
+        set(CODE_SIGN_IDENTITY "Developer ID Application: Your Name (TEAM_ID)")
+        
+        # 檢查是否提供了簽名身份
+        if(NOT CODE_SIGN_IDENTITY STREQUAL "Developer ID Application: Your Name (TEAM_ID)")
+            message(STATUS "Code signing enabled with: ${CODE_SIGN_IDENTITY}")
+            
+            # 為 Standalone 應用程式添加簽名
+            add_custom_command(TARGET PlugDataCustomObject_Standalone POST_BUILD
+                COMMAND ${CODESIGN_EXECUTABLE} 
+                    --force 
+                    --sign "${CODE_SIGN_IDENTITY}" 
+                    --deep
+                    --timestamp
+                    --options runtime
+                    "$<TARGET_BUNDLE_DIR:PlugDataCustomObject_Standalone>/PlugDataCustomObject_Standalone.app"
+                COMMENT "Signing Standalone application"
+            )
+            
+            # 為 VST3 插件添加簽名
+            add_custom_command(TARGET PlugDataCustomObject_VST3 POST_BUILD
+                COMMAND ${CODESIGN_EXECUTABLE} 
+                    --force 
+                    --sign "${CODE_SIGN_IDENTITY}" 
+                    --deep
+                    --timestamp
+                    --options runtime
+                    "$<TARGET_BUNDLE_DIR:PlugDataCustomObject_VST3>/PlugDataCustomObject_VST3.vst3"
+                COMMENT "Signing VST3 plugin"
+            )
+            
+            # 為 AU 插件添加簽名
+            add_custom_command(TARGET PlugDataCustomObject_AU POST_BUILD
+                COMMAND ${CODESIGN_EXECUTABLE} 
+                    --force 
+                    --sign "${CODE_SIGN_IDENTITY}" 
+                    --deep
+                    --timestamp
+                    --options runtime
+                    "$<TARGET_BUNDLE_DIR:PlugDataCustomObject_AU>/PlugDataCustomObject_AU.component"
+                COMMENT "Signing AU plugin"
+            )
+        else()
+            message(STATUS "Code signing disabled. Set CODE_SIGN_IDENTITY to enable.")
+        endif()
+    else()
+        message(WARNING "codesign not found. Code signing disabled.")
+    endif()
+endif()
+

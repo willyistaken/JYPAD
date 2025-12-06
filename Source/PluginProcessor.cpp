@@ -160,8 +160,7 @@ void PlugDataCustomObjectAudioProcessor::processBlock (juce::AudioBuffer<float>&
 
     // 在 processBlock 中獲取時間碼資訊（只能在這裡調用 getPlayHead）
     {
-        juce::ScopedLock lock(timeCodeLock);
-        cachedTimeCodeInfo = TimeCodeInfo();  // 重置
+        // juce::ScopedLock lock(timeCodeLock); // Removed, using atomics
         
         auto* playHead = getPlayHead();
         if (playHead != nullptr)
@@ -362,9 +361,10 @@ void PlugDataCustomObjectAudioProcessor::sendOSCMessage(int ballId, float x, flo
     
     if (!oscSender.send(message))
     {
-        // 如果發送失敗，嘗試重新連接
-        updateOSCConnection();
-        oscSender.send(message);
+        // 如果發送失敗，只記錄錯誤，不進行同步重新連接（這會導致音訊線程卡頓）
+        DEBUG_LOG_ERROR("Failed to send OSC message to " + address);
+        // updateOSCConnection();  // REMOVED synchronous reconnection
+        // oscSender.send(message); // REMOVED
     }
 }
 
@@ -415,8 +415,9 @@ void PlugDataCustomObjectAudioProcessor::sendMuteSoloOSCMessage(int ballId, bool
     
     if (!oscSender.send(muteMessage))
     {
-        updateOSCConnection();
-        oscSender.send(muteMessage);
+        DEBUG_LOG_ERROR("Failed to send OSC mute message to " + muteAddress);
+        // updateOSCConnection();
+        // oscSender.send(muteMessage);
     }
     
     // 發送 solo 訊息：{osc_prefix}/n/solo 1 或 0
@@ -432,16 +433,17 @@ void PlugDataCustomObjectAudioProcessor::sendMuteSoloOSCMessage(int ballId, bool
     
     if (!oscSender.send(soloMessage))
     {
-        updateOSCConnection();
-        oscSender.send(soloMessage);
+         DEBUG_LOG_ERROR("Failed to send OSC solo message to " + soloAddress);
+        // updateOSCConnection();
+        // oscSender.send(soloMessage);
     }
 }
 
 //==============================================================================
 PlugDataCustomObjectAudioProcessor::TimeCodeInfo PlugDataCustomObjectAudioProcessor::getTimeCodeInfo() const
 {
-    // 從緩存中讀取時間碼資訊（線程安全）
-    juce::ScopedLock lock(timeCodeLock);
+    // 從緩存中讀取時間碼資訊（線程安全，使用 atomic）
+    // juce::ScopedLock lock(timeCodeLock); // Removed
     return cachedTimeCodeInfo;
 }
 

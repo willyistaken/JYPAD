@@ -660,18 +660,19 @@ void JYPadEditor::showContextMenu(juce::Point<int> screenPosition, int ballId, j
                                auto* ball = jyPad.getBall(ballId);
                                if (ball != nullptr)
                                {
-                                   juce::String message = "Are you sure you want to clear all recorded events for ball " + 
-                                                          juce::String(ball->sourceNumber) + "?";
+                                   juce::String message = "Are you sure you want to clear all recorded events for Source " + 
+                                                          juce::String(ball->sourceNumber) + 
+                                                          "?\n\nThis action cannot be undone.";
                                    
                                    juce::AlertWindow::showOkCancelBox(
                                        juce::MessageBoxIconType::QuestionIcon,
                                        "Clear Events",
                                        message,
-                                       "Clear",
+                                       "OK",
                                        "Cancel",
                                        this,
                                        juce::ModalCallbackFunction::create([this, ballId](int result) {
-                                           if (result == 1)  // OK 按鈕
+                                           if (result == 1)  // OK button
                                            {
                                                jyPad.clearRecordedEvents(ballId);
                                                repaint();

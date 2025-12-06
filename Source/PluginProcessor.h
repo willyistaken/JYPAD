@@ -101,14 +101,42 @@ public:
     // 時間碼資訊（從 DAW 獲取）
     struct TimeCodeInfo
     {
-        double bpm = 120.0;
-        double timeInSeconds = 0.0;
-        double ppqPosition = 0.0;  // PPQ (Pulses Per Quarter Note) 位置
-        bool isPlaying = false;
-        bool isValid = false;
-        int timeSignatureNumerator = 4;
-        int timeSignatureDenominator = 4;
-        double ppqPositionOfLastBarStart = 0.0;  // 最後一個小節開始的 PPQ 位置
+        std::atomic<double> bpm { 120.0 };
+        std::atomic<double> timeInSeconds { 0.0 };
+        std::atomic<double> ppqPosition { 0.0 };  // PPQ (Pulses Per Quarter Note) 位置
+        std::atomic<bool> isPlaying { false };
+        std::atomic<bool> isValid { false };
+        std::atomic<int> timeSignatureNumerator { 4 };
+        std::atomic<int> timeSignatureDenominator { 4 };
+        std::atomic<double> ppqPositionOfLastBarStart { 0.0 };  // 最後一個小節開始的 PPQ 位置
+        
+        // Copy constructor needed for atomic members
+        TimeCodeInfo() = default;
+        TimeCodeInfo(const TimeCodeInfo& other) {
+            bpm.store(other.bpm.load());
+            timeInSeconds.store(other.timeInSeconds.load());
+            ppqPosition.store(other.ppqPosition.load());
+            isPlaying.store(other.isPlaying.load());
+            isValid.store(other.isValid.load());
+            timeSignatureNumerator.store(other.timeSignatureNumerator.load());
+            timeSignatureDenominator.store(other.timeSignatureDenominator.load());
+            ppqPositionOfLastBarStart.store(other.ppqPositionOfLastBarStart.load());
+        }
+        
+        // Assignment operator needed for atomic members
+        TimeCodeInfo& operator=(const TimeCodeInfo& other) {
+            if (this != &other) {
+                bpm.store(other.bpm.load());
+                timeInSeconds.store(other.timeInSeconds.load());
+                ppqPosition.store(other.ppqPosition.load());
+                isPlaying.store(other.isPlaying.load());
+                isValid.store(other.isValid.load());
+                timeSignatureNumerator.store(other.timeSignatureNumerator.load());
+                timeSignatureDenominator.store(other.timeSignatureDenominator.load());
+                ppqPositionOfLastBarStart.store(other.ppqPositionOfLastBarStart.load());
+            }
+            return *this;
+        }
     };
     
     // 獲取時間碼資訊（線程安全）
@@ -117,7 +145,6 @@ public:
 private:
     //==============================================================================
     // 時間碼資訊緩存（在 processBlock 中更新，在 UI 中讀取）
-    mutable juce::CriticalSection timeCodeLock;
     TimeCodeInfo cachedTimeCodeInfo;
     
     // Editor 指針（用於記錄 OSC 訊息）

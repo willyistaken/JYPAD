@@ -56,3 +56,4 @@ chmod -R 755 ~/Library/Audio/Plug-Ins/VST3/JYPad.vst3
 
 3. 重啟 DAW
 
+

@@ -25,37 +25,37 @@ mkdir -p "$VST3_DIR"
 mkdir -p "$AU_DIR"
 
 # 安裝 VST3
-if [ -d "$BUILD_DIR/VST3/XYPad.vst3" ]; then
+if [ -d "$BUILD_DIR/VST3/JYPad.vst3" ]; then
     echo "正在安裝 VST3 插件..."
-    if [ -d "$VST3_DIR/XYPad.vst3" ]; then
+    if [ -d "$VST3_DIR/JYPad.vst3" ]; then
         echo "  移除舊版本..."
-        rm -rf "$VST3_DIR/XYPad.vst3"
+        rm -rf "$VST3_DIR/JYPad.vst3"
     fi
-    cp -r "$BUILD_DIR/VST3/XYPad.vst3" "$VST3_DIR/"
-    echo "  ✓ VST3 插件已安裝到: $VST3_DIR/XYPad.vst3"
+    cp -r "$BUILD_DIR/VST3/JYPad.vst3" "$VST3_DIR/"
+    echo "  ✓ VST3 插件已安裝到: $VST3_DIR/JYPad.vst3"
 else
     echo "  警告: 找不到 VST3 插件"
 fi
 
 # 安裝 AU
-if [ -d "$BUILD_DIR/AU/XYPad.component" ]; then
+if [ -d "$BUILD_DIR/AU/JYPad.component" ]; then
     echo "正在安裝 AU 插件..."
-    if [ -d "$AU_DIR/XYPad.component" ]; then
+    if [ -d "$AU_DIR/JYPad.component" ]; then
         echo "  移除舊版本..."
-        rm -rf "$AU_DIR/XYPad.component"
+        rm -rf "$AU_DIR/JYPad.component"
     fi
-    cp -r "$BUILD_DIR/AU/XYPad.component" "$AU_DIR/"
-    echo "  ✓ AU 插件已安裝到: $AU_DIR/XYPad.component"
+    cp -r "$BUILD_DIR/AU/JYPad.component" "$AU_DIR/"
+    echo "  ✓ AU 插件已安裝到: $AU_DIR/JYPad.component"
 else
     echo "  警告: 找不到 AU 插件"
 fi
 
 # 設置權限
-if [ -d "$VST3_DIR/XYPad.vst3" ]; then
-    chmod -R 755 "$VST3_DIR/XYPad.vst3"
+if [ -d "$VST3_DIR/JYPad.vst3" ]; then
+    chmod -R 755 "$VST3_DIR/JYPad.vst3"
 fi
-if [ -d "$AU_DIR/XYPad.component" ]; then
-    chmod -R 755 "$AU_DIR/XYPad.component"
+if [ -d "$AU_DIR/JYPad.component" ]; then
+    chmod -R 755 "$AU_DIR/JYPad.component"
 fi
 
 echo ""
@@ -63,9 +63,10 @@ echo "=========================================="
 echo "安裝完成！"
 echo "=========================================="
 echo ""
-echo "VST3 位置: $VST3_DIR/XYPad.vst3"
-echo "AU 位置:   $AU_DIR/XYPad.component"
+echo "VST3 位置: $VST3_DIR/JYPad.vst3"
+echo "AU 位置:   $AU_DIR/JYPad.component"
 echo ""
 echo "請在您的 DAW 或 PlugData 中重新掃描插件。"
 echo ""
+
 

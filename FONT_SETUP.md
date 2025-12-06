@@ -106,3 +106,4 @@ sudo yum install google-noto-cjk-fonts  # CentOS/RHEL
 
 所有 UI 元件（Label、TextEditor、Graphics 等）都會使用 `FontManager::getInstance().getChineseFont()` 來獲取中文字體。
 
+

@@ -16,15 +16,14 @@
  */
 struct RecordedEvent
 {
-    juce::Uuid ballUid;  // 使用 UID 而不是 ballId（系統產生的唯一識別碼）
-    int ballId;  // 保留用於向後兼容和顯示
+    int ballId;  // 球的 ID
     double midiTime;  // PPQ position (MIDI time)
     float x;
     float y;
     float z;  // 暫時為 0，未來擴展用
     
-    RecordedEvent(const juce::Uuid& uid, int id, double time, float xPos, float yPos, float zPos = 0.0f)
-        : ballUid(uid), ballId(id), midiTime(time), x(xPos), y(yPos), z(zPos) {}
+    RecordedEvent(int id, double time, float xPos, float yPos, float zPos = 0.0f)
+        : ballId(id), midiTime(time), x(xPos), y(yPos), z(zPos) {}
     
     // 用於排序（按時間排序）
     bool operator<(const RecordedEvent& other) const
@@ -147,11 +146,8 @@ private:
     double currentSampleRate = 44100.0;
     int currentBlockSize = 512;
     
-    // 錄製的事件數據：每個球 UID 對應一個事件序列（按時間排序）
-    std::map<juce::Uuid, std::vector<RecordedEvent>> recordedEvents;
-    
-    // UID 到 ballId 的映射（用於向後兼容）
-    std::map<juce::Uuid, int> uidToIdMap;
+    // 錄製的事件數據：每個球 ID 對應一個事件序列（按時間排序）
+    std::map<int, std::vector<RecordedEvent>> recordedEvents;
 
     Ball* findBall(int ballId);
     const Ball* findBall(int ballId) const;

@@ -12,6 +12,7 @@ add_subdirectory(JUCE)
 # 創建插件目標
 juce_add_plugin(PlugDataCustomObject
     COMPANY_NAME "Jinyao Lin Audio Lab"
+    BUNDLE_ID "com.jinyaolin.PlugDataCustomObject"  # Bundle ID 不能包含空格
     PLUGIN_MANUFACTURER_CODE YrCo
     PLUGIN_CODE PDCu
     FORMATS AU Standalone

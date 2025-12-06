@@ -130,15 +130,10 @@ juce::String JYPad::getBallOutputString(int ballId) const
 //==============================================================================
 void JYPad::saveState(juce::MemoryOutputStream& stream)
 {
-    // 寫入版本標記（用於向後兼容檢測）
-    const int VERSION_MARKER = 0x4A595041;  // "JYPA" 的 ASCII
-    stream.writeInt(VERSION_MARKER);
-    
     stream.writeInt(static_cast<int>(balls.size()));
     for (const auto& ball : balls)
     {
-        stream.writeString(ball.uid.toString());  // 保存 UID（新格式）
-        stream.writeInt(ball.id);  // 保留 id 用於向後兼容
+        stream.writeInt(ball.id);
         stream.writeFloat(ball.x);
         stream.writeFloat(ball.y);
         stream.writeString(ball.oscPrefix);
@@ -158,15 +153,13 @@ void JYPad::saveState(juce::MemoryOutputStream& stream)
     stream.writeInt(static_cast<int>(recordedEvents.size()));
     for (const auto& pair : recordedEvents)
     {
-        const juce::Uuid& ballUid = pair.first;
+        int ballId = pair.first;
         const auto& events = pair.second;
-        // 保存 UID（作為字符串）
-        stream.writeString(ballUid.toString());
+        stream.writeInt(ballId);
         stream.writeInt(static_cast<int>(events.size()));
         for (const auto& event : events)
         {
-            stream.writeString(event.ballUid.toString());  // 保存事件的 UID
-            stream.writeInt(event.ballId);  // 保留 ballId 用於向後兼容
+            stream.writeInt(event.ballId);
             stream.writeDouble(event.midiTime);
             stream.writeFloat(event.x);
             stream.writeFloat(event.y);
@@ -210,53 +203,14 @@ void JYPad::loadState(juce::MemoryInputStream& stream)
                 break;
             }
             
-            // 嘗試讀取 UID（新格式），如果沒有則使用舊格式（向後兼容）
-            juce::Uuid ballUid;
-            int id;
-            if (!stream.isExhausted())
-            {
-                juce::String uidString = stream.readString();
-                if (!uidString.isEmpty() && uidString.length() == 32)  // UID 字符串長度為 32
-                {
-                    ballUid = juce::Uuid(uidString);
-                }
-                else
-                {
-                    // 舊格式：沒有 UID，生成新的
-                    ballUid = juce::Uuid();
-                    // 回退讀取位置（因為 readString 已經讀取了）
-                    // 實際上無法回退，所以我們需要重新設計
-                    // 暫時：如果讀取的不是有效的 UID，則假設是舊格式
-                    // 但這會導致問題，因為 readString 已經消耗了數據
-                    // 更好的方法是：在保存時先寫入一個版本標記
-                    // 暫時先假設新格式，如果失敗則使用舊格式
-                    if (uidString.length() > 0 && uidString.length() != 32)
-                    {
-                        // 這可能是舊格式的 id（作為字符串讀取），但這不對
-                        // 我們需要重新設計保存格式
-                        // 暫時：生成新的 UID
-                        ballUid = juce::Uuid();
-                    }
-                }
-            }
-            else
-            {
-                ballUid = juce::Uuid();  // 生成新的 UID
-            }
-            
-            if (stream.isExhausted())
-            {
-                DEBUG_LOG_ERROR("JYPad: Stream exhausted after reading UID, stopping");
-                break;
-            }
-            
-            id = stream.readInt();
-            DEBUG_LOG("JYPad: Reading ball " + juce::String(i) + ", id=" + juce::String(id) + ", uid=" + ballUid.toString());
+            int id = stream.readInt();
+            DEBUG_LOG("JYPad: Reading ball " + juce::String(i) + ", id=" + juce::String(id));
             
             // 檢查 ID 是否合理
             if (id < 0 || id > 10000)
             {
                 DEBUG_LOG_ERROR("JYPad: Invalid ball ID: " + juce::String(id) + ", skipping");
+                // 嘗試跳過這個球的數據，但這很危險，最好重置
                 break;
             }
             
@@ -294,8 +248,6 @@ void JYPad::loadState(juce::MemoryInputStream& stream)
                     if (stream.isExhausted()) throw std::runtime_error("Stream exhausted after number");
                     
                     Ball newBall(id, x, y, prefix, juce::Colour(colorARGB), name, number);
-                    // 設置 UID（從保存的數據中恢復，或為舊格式生成新的）
-                    newBall.uid = ballUid;
                     
                     // 嘗試讀取 mute 和 solo 狀態（向後兼容）
                     if (!stream.isExhausted())
@@ -423,12 +375,7 @@ void JYPad::loadState(juce::MemoryInputStream& stream)
                         break;  // 跳過這個球的事件
                     }
                     
-                    // 通過 ballId 找到對應的 UID
-                    const Ball* ball = findBall(ballId);
-                    if (ball == nullptr)
-                        continue;  // 跳過這個球的事件
-                    
-                    auto& events = recordedEvents[ball->uid];
+                    auto& events = recordedEvents[ballId];
                     events.clear();
                     events.reserve(numEvents);
                     
@@ -461,7 +408,7 @@ void JYPad::loadState(juce::MemoryInputStream& stream)
                         // 驗證數據的合理性
                         if (std::isfinite(midiTime) && std::isfinite(x) && std::isfinite(y) && std::isfinite(z))
                         {
-                            events.emplace_back(ball->uid, eventBallId, midiTime, x, y, z);
+                            events.emplace_back(eventBallId, midiTime, x, y, z);
                         }
                         else
                         {
@@ -516,30 +463,36 @@ void JYPad::loadState(juce::MemoryInputStream& stream)
 void JYPad::recordEvent(int ballId, double midiTime, float x, float y, float z)
 {
     // 檢查球是否存在
-    Ball* ball = findBall(ballId);
-    if (ball == nullptr)
+    if (findBall(ballId) == nullptr)
         return;
     
-    // 使用 UID 作為 key 來存儲事件
-    auto& events = recordedEvents[ball->uid];
-    events.emplace_back(ball->uid, ballId, midiTime, x, y, z);
+    // 添加事件到對應球的錄製序列
+    auto& events = recordedEvents[ballId];
+    events.emplace_back(ballId, midiTime, x, y, z);
     
-    // 更新 UID 到 ID 的映射
-    uidToIdMap[ball->uid] = ballId;
+    // 檢查是否需要排序：只有當新事件的時間小於等於最後一個事件的時間時才需要排序
+    // 大多數情況下，錄製是按時間順序進行的，所以不需要排序
+    bool needsSort = false;
+    if (!events.empty())
+    {
+        if (midiTime < events.back().midiTime)
+        {
+            needsSort = true;
+        }
+    }
     
-    // 保持按時間排序（雖然通常新事件時間會更晚，但為了安全還是排序）
-    std::sort(events.begin(), events.end());
+    events.emplace_back(ballId, midiTime, x, y, z);
+    
+    // 只有在需要時才排序
+    if (needsSort)
+    {
+        std::sort(events.begin(), events.end());
+    }
 }
 
 void JYPad::clearRecordedEvents(int ballId)
 {
-    // 通過 ballId 找到對應的 UID，然後清除事件
-    Ball* ball = findBall(ballId);
-    if (ball != nullptr)
-    {
-        recordedEvents.erase(ball->uid);
-        uidToIdMap.erase(ball->uid);
-    }
+    recordedEvents.erase(ballId);
 }
 
 void JYPad::clearAllRecordedEvents()
@@ -550,16 +503,12 @@ void JYPad::clearAllRecordedEvents()
 void JYPad::insertEventAtTime(int ballId, double midiTime, float x, float y, float z)
 {
     // 檢查球是否存在
-    Ball* ball = findBall(ballId);
-    if (ball == nullptr)
+    if (findBall(ballId) == nullptr)
         return;
     
-    // 使用 UID 作為 key 來存儲事件
-    auto& events = recordedEvents[ball->uid];
-    events.emplace_back(ball->uid, ballId, midiTime, x, y, z);
-    
-    // 更新 UID 到 ID 的映射
-    uidToIdMap[ball->uid] = ballId;
+    // 添加事件到對應球的錄製序列
+    auto& events = recordedEvents[ballId];
+    events.emplace_back(ballId, midiTime, x, y, z);
     
     // 保持按時間排序
     std::sort(events.begin(), events.end());
@@ -572,7 +521,7 @@ void JYPad::tweenToNext(int ballId, double currentMidiTime, int numSteps)
     if (ball == nullptr)
         return;
     
-    auto it = recordedEvents.find(ball->uid);
+    auto it = recordedEvents.find(ballId);
     if (it == recordedEvents.end() || it->second.empty())
         return;
     
@@ -619,7 +568,7 @@ void JYPad::tweenToNext(int ballId, double currentMidiTime, int numSteps)
         float y = startY + (nextEvent->y - startY) * static_cast<float>(t);
         float z = startZ + (nextEvent->z - startZ) * static_cast<float>(t);
         
-        events.emplace_back(ball->uid, ballId, interpolatedTime, x, y, z);
+        events.emplace_back(ballId, interpolatedTime, x, y, z);
     }
     
     // 重新排序
@@ -628,12 +577,7 @@ void JYPad::tweenToNext(int ballId, double currentMidiTime, int numSteps)
 
 const RecordedEvent* JYPad::getEventAtTime(int ballId, double midiTime) const
 {
-    // 通過 ballId 找到對應的 UID
-    const Ball* ball = findBall(ballId);
-    if (ball == nullptr)
-        return nullptr;
-    
-    auto it = recordedEvents.find(ball->uid);
+    auto it = recordedEvents.find(ballId);
     if (it == recordedEvents.end() || it->second.empty())
         return nullptr;
     
@@ -688,12 +632,7 @@ const RecordedEvent* JYPad::getEventAtTime(int ballId, double midiTime) const
 
 const RecordedEvent* JYPad::getFirstEvent(int ballId) const
 {
-    // 通過 ballId 找到對應的 UID
-    const Ball* ball = findBall(ballId);
-    if (ball == nullptr)
-        return nullptr;
-    
-    auto it = recordedEvents.find(ball->uid);
+    auto it = recordedEvents.find(ballId);
     if (it == recordedEvents.end() || it->second.empty())
         return nullptr;
     
@@ -703,12 +642,7 @@ const RecordedEvent* JYPad::getFirstEvent(int ballId) const
 
 const RecordedEvent* JYPad::getLastEventBeforeTime(int ballId, double midiTime) const
 {
-    // 通過 ballId 找到對應的 UID
-    const Ball* ball = findBall(ballId);
-    if (ball == nullptr)
-        return nullptr;
-    
-    auto it = recordedEvents.find(ball->uid);
+    auto it = recordedEvents.find(ballId);
     if (it == recordedEvents.end() || it->second.empty())
         return nullptr;
     
@@ -729,12 +663,7 @@ const RecordedEvent* JYPad::getLastEventBeforeTime(int ballId, double midiTime) 
 
 int JYPad::getRecordedEventCount(int ballId) const
 {
-    // 通過 ballId 找到對應的 UID
-    const Ball* ball = findBall(ballId);
-    if (ball == nullptr)
-        return 0;
-    
-    auto it = recordedEvents.find(ball->uid);
+    auto it = recordedEvents.find(ballId);
     if (it == recordedEvents.end())
         return 0;
     return static_cast<int>(it->second.size());

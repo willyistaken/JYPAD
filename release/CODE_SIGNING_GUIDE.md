@@ -222,3 +222,4 @@ xcrun stapler validate /path/to/JYPad.app
 - [Code Signing Guide](https://developer.apple.com/library/archive/documentation/Security/Conceptual/CodeSigningGuide/)
 - [Notarization Guide](https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution)
 
+

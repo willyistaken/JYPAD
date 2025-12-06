@@ -232,6 +232,9 @@ void PlugDataCustomObjectAudioProcessor::getStateInformation (juce::MemoryBlock&
         mos.writeInt(oscSettings.port);
         mos.writeBool(oscSettings.enabled);
     }
+    
+    // 保存 zoom scale
+    mos.writeFloat(zoomScale);
 }
 
 void PlugDataCustomObjectAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
@@ -268,6 +271,20 @@ void PlugDataCustomObjectAudioProcessor::setStateInformation (const void* data, 
         else
         {
             DEBUG_LOG("PluginProcessor: No OSC settings in state");
+        }
+        
+        // 載入 zoom scale（如果存在）
+        if (!mis.isExhausted())
+        {
+            DEBUG_LOG("PluginProcessor: Loading zoom scale");
+            zoomScale = mis.readFloat();
+            // 限制在有效範圍內
+            zoomScale = juce::jlimit(0.1f, 10.0f, zoomScale);
+            DEBUG_LOG("PluginProcessor: Zoom scale loaded: " + juce::String(zoomScale));
+        }
+        else
+        {
+            DEBUG_LOG("PluginProcessor: No zoom scale in state, using default");
         }
         
         DEBUG_LOG("PluginProcessor: setStateInformation completed");

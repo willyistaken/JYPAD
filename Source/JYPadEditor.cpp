@@ -5,7 +5,7 @@
 
 //==============================================================================
 JYPadEditor::JYPadEditor(JYPad& pad, PlugDataCustomObjectAudioProcessor& processor)
-    : jyPad(pad), audioProcessor(processor)
+    : jyPad(pad), audioProcessor(processor), zoomScale(processor.zoomScale)
 {
     DEBUG_LOG("JYPadEditor: Constructor started - XY_STEP 1");
     try
@@ -68,6 +68,9 @@ void JYPadEditor::paint(juce::Graphics& g)
     // 繪製網格
     drawGrid(g);
     
+    // 繪製參考圓（中心圓和半徑圓）
+    drawReferenceCircles(g);
+    
     // 繪製球體
     drawBalls(g);
 }
@@ -105,17 +108,60 @@ void JYPadEditor::drawGrid(juce::Graphics& g)
     g.fillEllipse(centerX - 2.0f, centerY - 2.0f, 4.0f, 4.0f);
 }
 
-void JYPadEditor::drawBalls(juce::Graphics& g)
+void JYPadEditor::drawReferenceCircles(juce::Graphics& g)
 {
     auto bounds = getLocalBounds().toFloat();
+    float centerX = bounds.getCentreX();
+    float centerY = bounds.getCentreY();
     
+    // 計算縮放後的尺寸
+    float padWidth = bounds.getWidth() * zoomScale;
+    float padHeight = bounds.getHeight() * zoomScale;
+    
+    // 根據縮放比例計算顯示範圍
+    // zoomScale = 0.1（最小縮放）時，顯示範圍 = -20 到 20（更大的範圍）
+    // zoomScale = 10.0（最大縮放）時，顯示範圍 = -0.5 到 0.5（更小的範圍）
+    float displayRange = 20.0f - (zoomScale - 0.1f) * 19.5f / 9.9f;
+    displayRange = juce::jlimit(0.5f, 20.0f, displayRange);
+    
+    // 邏輯座標到螢幕座標的轉換比例（考慮縮放和顯示範圍）
+    float scaleX = padWidth / (displayRange * 2.0f);
+    float scaleY = padHeight / (displayRange * 2.0f);
+    float scale = juce::jmin(scaleX, scaleY);  // 使用較小的 scale 以保持圓形
+    
+    g.setColour(juce::Colour(0xff404040).withAlpha(0.5f));
+    
+    // 從 0.1 到 3.0，每隔 0.1 畫一個圓（但只在顯示範圍內繪製）
+    for (float radius = 0.1f; radius <= 3.0f; radius += 0.1f)
+    {
+        // 只繪製在顯示範圍內的圓
+        if (radius <= displayRange)
+        {
+            // 將邏輯座標半徑轉換為螢幕座標
+            float screenRadius = radius * scale;
+            
+            // 繪製圓（線寬固定為 1）
+            g.drawEllipse(centerX - screenRadius, centerY - screenRadius, 
+                         screenRadius * 2.0f, screenRadius * 2.0f, 
+                         1.0f);
+        }
+    }
+    
+    // 繪製中心點（半徑 1 像素的實心圓）
+    g.setColour(juce::Colour(0xff606060));
+    g.fillEllipse(centerX - 1.0f, centerY - 1.0f, 2.0f, 2.0f);
+}
+
+void JYPadEditor::drawBalls(juce::Graphics& g)
+{
     const auto& balls = jyPad.getAllBalls();
     
     for (const auto& ball : balls)
     {
-        // 將邏輯座標轉換為螢幕座標
-        float screenX = bounds.getX() + (ball.x + 1.0f) * 0.5f * bounds.getWidth();
-        float screenY = bounds.getY() + (1.0f - (ball.y + 1.0f) * 0.5f) * bounds.getHeight();
+        // 將邏輯座標轉換為螢幕座標（考慮縮放）
+        auto screenPos = logicToScreen(ball.x, ball.y);
+        float screenX = screenPos.x;
+        float screenY = screenPos.y;
         
         // 計算透明度：如果 mute 則為 20%，否則為 100%
         // 安全檢查 isMuted（防止未初始化）
@@ -248,7 +294,7 @@ void JYPadEditor::mouseDown(const juce::MouseEvent& e)
         }
         
         // 只有點擊在球上且未被 mute 才開始拖動
-        auto logicPos = screenToLogic(e.getPosition());
+        auto logicPos = screenToLogicWithZoom(e.getPosition());
         jyPad.setBallPosition(draggedBallId, logicPos.x, logicPos.y);
         // 立即重繪
         repaint();
@@ -280,7 +326,7 @@ void JYPadEditor::mouseDrag(const juce::MouseEvent& e)
                 auto timeInfo = audioProcessor.getTimeCodeInfo();
                 if (timeInfo.isValid)
                 {
-                    auto logicPos = screenToLogic(e.getPosition());
+                    auto logicPos = screenToLogicWithZoom(e.getPosition());
                     // 記錄事件：ID, MIDI time, x, y, z (z 暫時為 0)
                     jyPad.recordEvent(draggedBallId, timeInfo.ppqPosition, 
                                       logicPos.x, logicPos.y, 0.0f);
@@ -288,7 +334,7 @@ void JYPadEditor::mouseDrag(const juce::MouseEvent& e)
             }
         }
         
-        auto logicPos = screenToLogic(e.getPosition());
+        auto logicPos = screenToLogicWithZoom(e.getPosition());
         jyPad.setBallPosition(draggedBallId, logicPos.x, logicPos.y);
         // 立即重繪以確保視覺更新
         repaint();
@@ -300,32 +346,100 @@ void JYPadEditor::mouseUp([[maybe_unused]] const juce::MouseEvent& e)
     draggedBallId = -1;
 }
 
+void JYPadEditor::mouseDoubleClick(const juce::MouseEvent& e)
+{
+    // 檢查雙擊是否在球上
+    int ballId = getBallAtPosition(e.getPosition());
+    if (ballId >= 0)
+    {
+        // 切換該球的 recording 狀態
+        auto* ball = jyPad.getBall(ballId);
+        if (ball != nullptr)
+        {
+            ball->isRecording = !ball->isRecording;
+            repaint();
+        }
+    }
+}
+
 //==============================================================================
 juce::Point<float> JYPadEditor::screenToLogic(juce::Point<int> screenPos) const
 {
+    return screenToLogicWithZoom(screenPos);
+}
+
+juce::Point<float> JYPadEditor::screenToLogicWithZoom(juce::Point<int> screenPos) const
+{
     auto bounds = getLocalBounds().toFloat();
+    float centerX = bounds.getCentreX();
+    float centerY = bounds.getCentreY();
     
-    // 將螢幕座標 (0-width, 0-height) 轉換為邏輯座標 (-1 to 1, -1 to 1)
-    float logicX = ((screenPos.x - bounds.getX()) / bounds.getWidth()) * 2.0f - 1.0f;
-    float logicY = 1.0f - ((screenPos.y - bounds.getY()) / bounds.getHeight()) * 2.0f;
+    // 計算縮放後的 pad 尺寸和位置
+    float padWidth = bounds.getWidth() * zoomScale;
+    float padHeight = bounds.getHeight() * zoomScale;
+    float padX = centerX - padWidth * 0.5f;
+    float padY = centerY - padHeight * 0.5f;
+    
+    // 根據縮放比例計算顯示範圍
+    // zoomScale = 0.1（最小縮放）時，顯示範圍 = -20 到 20（更大的範圍）
+    // zoomScale = 10.0（最大縮放）時，顯示範圍 = -0.5 到 0.5（更小的範圍）
+    float displayRange = 20.0f - (zoomScale - 0.1f) * 19.5f / 9.9f;
+    displayRange = juce::jlimit(0.5f, 20.0f, displayRange);
+    
+    // 將螢幕座標轉換為相對於縮放後 pad 的座標
+    float relativeX = (screenPos.x - padX) / padWidth;
+    float relativeY = (screenPos.y - padY) / padHeight;
+    
+    // 轉換為邏輯座標（根據顯示範圍）
+    float logicX = (relativeX * 2.0f - 1.0f) * displayRange;
+    float logicY = (1.0f - relativeY * 2.0f) * displayRange;  // 翻轉 Y 軸
     
     return juce::Point<float>(logicX, logicY);
 }
 
-int JYPadEditor::getBallAtPosition(juce::Point<int> pos) const
+juce::Point<float> JYPadEditor::logicToScreen(float logicX, float logicY) const
 {
     auto bounds = getLocalBounds().toFloat();
+    float centerX = bounds.getCentreX();
+    float centerY = bounds.getCentreY();
+    
+    // 計算縮放後的 pad 尺寸和位置
+    float padWidth = bounds.getWidth() * zoomScale;
+    float padHeight = bounds.getHeight() * zoomScale;
+    float padX = centerX - padWidth * 0.5f;
+    float padY = centerY - padHeight * 0.5f;
+    
+    // 根據縮放比例計算顯示範圍
+    // zoomScale = 0.1（最小縮放）時，顯示範圍 = -20 到 20（更大的範圍）
+    // zoomScale = 10.0（最大縮放）時，顯示範圍 = -0.5 到 0.5（更小的範圍）
+    float displayRange = 20.0f - (zoomScale - 0.1f) * 19.5f / 9.9f;
+    displayRange = juce::jlimit(0.5f, 20.0f, displayRange);
+    
+    // 將邏輯座標轉換為相對座標 (0 to 1)
+    float normalizedX = logicX / displayRange;
+    float normalizedY = logicY / displayRange;
+    float relativeX = (normalizedX + 1.0f) * 0.5f;
+    float relativeY = (1.0f - normalizedY) * 0.5f;  // 翻轉 Y 軸
+    
+    // 轉換為螢幕座標
+    float screenX = padX + relativeX * padWidth;
+    float screenY = padY + relativeY * padHeight;
+    
+    return juce::Point<float>(screenX, screenY);
+}
+
+int JYPadEditor::getBallAtPosition(juce::Point<int> pos) const
+{
     const auto& balls = jyPad.getAllBalls();
     
     for (const auto& ball : balls)
     {
-        // 將邏輯座標轉換為螢幕座標
-        float screenX = bounds.getX() + (ball.x + 1.0f) * 0.5f * bounds.getWidth();
-        float screenY = bounds.getY() + (1.0f - (ball.y + 1.0f) * 0.5f) * bounds.getHeight();
+        // 將邏輯座標轉換為螢幕座標（考慮縮放）
+        auto screenPos = logicToScreen(ball.x, ball.y);
         
         // 檢查距離
-        float dx = pos.x - screenX;
-        float dy = pos.y - screenY;
+        float dx = pos.x - screenPos.x;
+        float dy = pos.y - screenPos.y;
         float distance = std::sqrt(dx * dx + dy * dy);
         
         if (distance <= ballRadius)
@@ -337,6 +451,20 @@ int JYPadEditor::getBallAtPosition(juce::Point<int> pos) const
 
 void JYPadEditor::updateDisplay()
 {
+    repaint();
+}
+
+//==============================================================================
+// 兩指縮放手勢處理
+void JYPadEditor::mouseMagnify([[maybe_unused]] const juce::MouseEvent& e, float scaleFactor)
+{
+    // scaleFactor > 1.0 表示放大，< 1.0 表示縮小
+    // 累積縮放比例
+    zoomScale *= scaleFactor;
+    
+    // 限制縮放範圍（0.1x 到 10x）
+    zoomScale = juce::jlimit(0.1f, 10.0f, zoomScale);
+    
     repaint();
 }
 

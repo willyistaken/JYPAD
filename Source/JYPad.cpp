@@ -84,9 +84,9 @@ void JYPad::setBallPosition(int ballId, float x, float y)
     Ball* ball = findBall(ballId);
     if (ball != nullptr)
     {
-        // 限制座標範圍
-        ball->x = juce::jlimit(-1.0f, 1.0f, x);
-        ball->y = juce::jlimit(-1.0f, 1.0f, y);
+        // 限制座標範圍（-10 到 10）
+        ball->x = juce::jlimit(-10.0f, 10.0f, x);
+        ball->y = juce::jlimit(-10.0f, 10.0f, y);
 
         // 觸發回調
         if (onBallMoved)
@@ -513,8 +513,12 @@ void JYPad::tweenToNext(int ballId, double currentMidiTime, double bpm,
     auto& events = it->second;
     
     // 找到下一個事件（時間大於當前時間的第一個事件）
-    const RecordedEvent* nextEvent = nullptr;
+    // 注意：保存事件的值而不是指針，因為後續添加事件可能會導致向量重新分配
+    float nextX = 0.0f;
+    float nextY = 0.0f;
+    float nextZ = 0.0f;
     double nextTime = -1.0;
+    bool foundNext = false;
     
     for (size_t i = 0; i < events.size(); ++i)
     {
@@ -523,13 +527,16 @@ void JYPad::tweenToNext(int ballId, double currentMidiTime, double bpm,
             if (nextTime < 0.0 || events[i].midiTime < nextTime)
             {
                 nextTime = events[i].midiTime;
-                nextEvent = &events[i];
+                nextX = events[i].x;
+                nextY = events[i].y;
+                nextZ = events[i].z;
+                foundNext = true;
             }
         }
     }
     
     // 如果沒有下一個事件，無法進行插值
-    if (nextEvent == nullptr)
+    if (!foundNext)
         return;
     
     // 使用當前球的位置作為起始點
@@ -590,9 +597,9 @@ void JYPad::tweenToNext(int ballId, double currentMidiTime, double bpm,
         double interpolatedTime = currentMidiTime + timeRange * t;
         
         // 線性插值位置（從當前球位置到下一個事件位置）
-        float x = startX + (nextEvent->x - startX) * static_cast<float>(t);
-        float y = startY + (nextEvent->y - startY) * static_cast<float>(t);
-        float z = startZ + (nextEvent->z - startZ) * static_cast<float>(t);
+        float x = startX + (nextX - startX) * static_cast<float>(t);
+        float y = startY + (nextY - startY) * static_cast<float>(t);
+        float z = startZ + (nextZ - startZ) * static_cast<float>(t);
         
         events.emplace_back(ballId, interpolatedTime, x, y, z);
     }

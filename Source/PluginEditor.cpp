@@ -81,8 +81,14 @@ PlugDataCustomObjectAudioProcessorEditor::PlugDataCustomObjectAudioProcessorEdit
     // 設定 JYPad 的回調，當球移動時更新輸出和發送 OSC
     DEBUG_LOG("PluginEditor: Setting up JYPad callback - STEP 15");
     audioProcessor.jyPad.onBallMoved = [this](int ballId, float x, float y) {
-        // 更新 UI 輸出
-        juce::String output = audioProcessor.jyPad.getBallOutputString(ballId);
+        // 座標乘以 10 用於顯示和輸出
+        float outputX = x * 10.0f;
+        float outputY = y * 10.0f;
+        
+        // 更新 UI 輸出（使用乘以 10 後的座標）
+        juce::String output = juce::String(ballId) + " " + 
+                              juce::String(outputX, 2) + " " + 
+                              juce::String(outputY, 2);
         
         // 如果已經在訊息線程中，直接更新；否則使用異步更新
         if (juce::MessageManager::getInstance()->isThisTheMessageThread())
@@ -96,10 +102,10 @@ PlugDataCustomObjectAudioProcessorEditor::PlugDataCustomObjectAudioProcessorEdit
             });
         }
         
-        // 發送 OSC 訊息
+        // 發送 OSC 訊息（使用乘以 10 後的座標）
         if (audioProcessor.oscSettings.enabled)
         {
-            audioProcessor.sendOSCMessage(ballId, x, y);
+            audioProcessor.sendOSCMessage(ballId, outputX, outputY);
         }
     };
     

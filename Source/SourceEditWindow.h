@@ -13,7 +13,7 @@ class SourceEditWindow : public juce::DialogWindow
 public:
     struct SourceInfo
     {
-        juce::String oscPrefix = "/jypad/ball";
+        juce::String oscPrefix = "/track/1";  // 預設 prefix 為 /track/n
         juce::Colour color = juce::Colour(0xff4a90e2);
         juce::String sourceName = "";
         int sourceNumber = 1;

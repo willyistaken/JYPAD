@@ -25,6 +25,9 @@ public:
     void mouseUp(const juce::MouseEvent& e) override;
     void mouseDoubleClick(const juce::MouseEvent& e) override;
     
+    // 滾輪和觸控板手勢（縮放）
+    void mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel) override;
+    
     // 觸控手勢（兩指縮放）
     void mouseMagnify(const juce::MouseEvent& e, float scaleFactor) override;
     

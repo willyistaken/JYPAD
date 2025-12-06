@@ -198,6 +198,7 @@ juce::AudioProcessorEditor* PlugDataCustomObjectAudioProcessor::createEditor()
     {
         DEBUG_LOG("PluginProcessor: About to create PluginEditor instance");
         auto* editor = new PlugDataCustomObjectAudioProcessorEditor (*this);
+        setEditor(editor);  // 設置 Editor 指針，用於記錄 OSC 訊息
         DEBUG_LOG("PluginProcessor: Editor instance created, returning");
         return editor;
     }
@@ -331,7 +332,7 @@ void PlugDataCustomObjectAudioProcessor::updateOSCConnection()
     }
 }
 
-void PlugDataCustomObjectAudioProcessor::sendOSCMessage(int ballId, float x, float y, float z)
+void PlugDataCustomObjectAudioProcessor::sendOSCMessage(int ballId, float x, float y, [[maybe_unused]] float z)
 {
     bool enabled;
     {
@@ -347,16 +348,92 @@ void PlugDataCustomObjectAudioProcessor::sendOSCMessage(int ballId, float x, flo
     if (ball == nullptr)
         return;
     
-    // 發送 OSC 訊息格式：{oscPrefix} x y z
-    // 例如：如果 oscPrefix = "/jypad/ball1"，則地址為 "/jypad/ball1"，參數為 x, y, z
-    juce::String address = ball->oscPrefix;
-    juce::OSCMessage message(address, x, y, z);
+    // OSC 發送格式：{osc_prefix}/xy x y（暫時不發送 z 值）
+    // 例如：如果 oscPrefix = "/track/1"，則地址為 "/track/1/xy"，參數為 x, y
+    juce::String address = ball->oscPrefix + "/xy";
+    juce::OSCMessage message(address, x, y); // 只發送 x, y
+    
+    // 記錄 OSC 訊息
+    if (oscMessageEditor != nullptr)
+    {
+        juce::String logMsg = address + " " + juce::String(x, 2) + " " + juce::String(y, 2);
+        oscMessageEditor->logOSCMessage(logMsg);
+    }
     
     if (!oscSender.send(message))
     {
         // 如果發送失敗，嘗試重新連接
         updateOSCConnection();
         oscSender.send(message);
+    }
+}
+
+void PlugDataCustomObjectAudioProcessor::sendMuteSoloOSCMessage(int ballId, bool isMute, bool isSolo)
+{
+    bool enabled;
+    {
+        juce::ScopedLock lock(oscSettingsLock);
+        enabled = oscSettings.enabled;
+    }
+    
+    if (!enabled)
+        return;
+    
+    // 獲取球的信息
+    Ball* ball = jyPad.getBall(ballId);
+    if (ball == nullptr)
+        return;
+    
+    // 發送 mute 訊息：{osc_prefix}/n/mute 1 或 0
+    // 其中 n 是 source number
+    // 例如：如果 oscPrefix = "/track/1"，sourceNumber = 1，則地址為 "/track/1/1/mute"
+    // 但根據用戶需求，應該是 {osc_prefix}/n/mute，其中 osc_prefix 可能已經是 "/track"，n 是 source number
+    // 為了保持一致性，我們假設 oscPrefix 是基礎前綴（如 "/track"），然後加上 source number
+    // 但如果 oscPrefix 已經包含 source number（如 "/track/1"），我們需要提取基礎前綴
+    // 暫時假設 oscPrefix 格式為 "/track/n"，我們需要提取 "/track" 部分
+    juce::String basePrefix = ball->oscPrefix;
+    // 如果 oscPrefix 以 "/track/" 開頭，提取基礎前綴
+    if (basePrefix.startsWith("/track/"))
+    {
+        // 提取 "/track" 部分
+        int lastSlash = basePrefix.lastIndexOfChar('/');
+        if (lastSlash > 0)
+        {
+            basePrefix = basePrefix.substring(0, lastSlash);
+        }
+    }
+    
+    juce::String muteAddress = basePrefix + "/" + juce::String(ball->sourceNumber) + "/mute";
+    juce::OSCMessage muteMessage(muteAddress, isMute ? 1 : 0);
+    
+    // 記錄 OSC 訊息
+    if (oscMessageEditor != nullptr)
+    {
+        juce::String logMsg = muteAddress + " " + juce::String(isMute ? 1 : 0);
+        oscMessageEditor->logOSCMessage(logMsg);
+    }
+    
+    if (!oscSender.send(muteMessage))
+    {
+        updateOSCConnection();
+        oscSender.send(muteMessage);
+    }
+    
+    // 發送 solo 訊息：{osc_prefix}/n/solo 1 或 0
+    juce::String soloAddress = basePrefix + "/" + juce::String(ball->sourceNumber) + "/solo";
+    juce::OSCMessage soloMessage(soloAddress, isSolo ? 1 : 0);
+    
+    // 記錄 OSC 訊息
+    if (oscMessageEditor != nullptr)
+    {
+        juce::String logMsg = soloAddress + " " + juce::String(isSolo ? 1 : 0);
+        oscMessageEditor->logOSCMessage(logMsg);
+    }
+    
+    if (!oscSender.send(soloMessage))
+    {
+        updateOSCConnection();
+        oscSender.send(soloMessage);
     }
 }
 

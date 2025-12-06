@@ -7,6 +7,7 @@
 #include <vector>
 #include <algorithm>
 #include <map>
+#include <unordered_map>
 
 //==============================================================================
 /**
@@ -15,14 +16,15 @@
  */
 struct RecordedEvent
 {
-    int ballId;
+    juce::Uuid ballUid;  // 使用 UID 而不是 ballId（系統產生的唯一識別碼）
+    int ballId;  // 保留用於向後兼容和顯示
     double midiTime;  // PPQ position (MIDI time)
     float x;
     float y;
     float z;  // 暫時為 0，未來擴展用
     
-    RecordedEvent(int id, double time, float xPos, float yPos, float zPos = 0.0f)
-        : ballId(id), midiTime(time), x(xPos), y(yPos), z(zPos) {}
+    RecordedEvent(const juce::Uuid& uid, int id, double time, float xPos, float yPos, float zPos = 0.0f)
+        : ballUid(uid), ballId(id), midiTime(time), x(xPos), y(yPos), z(zPos) {}
     
     // 用於排序（按時間排序）
     bool operator<(const RecordedEvent& other) const
@@ -39,12 +41,13 @@ struct RecordedEvent
  */
 struct Ball
 {
-    int id;
+    juce::Uuid uid;  // 系統產生的唯一識別碼，與 source number 無關
+    int id;  // 保留用於向後兼容，但主要使用 uid
     float x;  // 範圍: -1.0 到 1.0
     float y;  // 範圍: -1.0 到 1.0
     
     // Source 資訊
-    juce::String oscPrefix = "/jypad/ball";
+    juce::String oscPrefix = "/track/1";  // 預設 prefix 為 /track/n
     juce::Colour color = juce::Colour(0xff4a90e2);  // 預設藍色
     juce::String sourceName = "";
     int sourceNumber = 1;  // 自動編號
@@ -57,11 +60,11 @@ struct Ball
     bool isRecording = false;
     
     Ball(int ballId, float xPos = 0.0f, float yPos = 0.0f)
-        : id(ballId), x(xPos), y(yPos) {}
+        : uid(juce::Uuid()), id(ballId), x(xPos), y(yPos) {}
     
     Ball(int ballId, float xPos, float yPos, const juce::String& prefix, 
          const juce::Colour& col, const juce::String& name, int number)
-        : id(ballId), x(xPos), y(yPos), oscPrefix(prefix), color(col), 
+        : uid(juce::Uuid()), id(ballId), x(xPos), y(yPos), oscPrefix(prefix), color(col), 
           sourceName(name), sourceNumber(number) {}
 };
 
@@ -117,9 +120,7 @@ public:
     void insertEventAtTime(int ballId, double midiTime, float x, float y, float z = 0.0f);
     
     // 在當前事件和下一個事件之間生成插值事件（Tween）
-    // 會根據該球現有錄製事件的時間間隔來決定插值密度，保持與錄製頻率一致
-    void tweenToNext(int ballId, double currentMidiTime, double bpm = 120.0, 
-                     int timeSignatureNumerator = 4, int timeSignatureDenominator = 4);
+    void tweenToNext(int ballId, double currentMidiTime, int numSteps);
     
     // 根據 MIDI time 回放錄製的事件（返回需要更新的球位置，如果沒有變化則返回 nullptr）
     // 只在位置改變時返回，不動時返回 nullptr 以節省資源
@@ -146,11 +147,16 @@ private:
     double currentSampleRate = 44100.0;
     int currentBlockSize = 512;
     
-    // 錄製的事件數據：每個球 ID 對應一個事件序列（按時間排序）
-    std::map<int, std::vector<RecordedEvent>> recordedEvents;
+    // 錄製的事件數據：每個球 UID 對應一個事件序列（按時間排序）
+    std::map<juce::Uuid, std::vector<RecordedEvent>> recordedEvents;
+    
+    // UID 到 ballId 的映射（用於向後兼容）
+    std::map<juce::Uuid, int> uidToIdMap;
 
     Ball* findBall(int ballId);
     const Ball* findBall(int ballId) const;
+    Ball* findBallByUid(const juce::Uuid& uid);
+    const Ball* findBallByUid(const juce::Uuid& uid) const;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(JYPad)
 };

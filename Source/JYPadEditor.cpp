@@ -156,6 +156,17 @@ void JYPadEditor::drawBalls(juce::Graphics& g)
 {
     const auto& balls = jyPad.getAllBalls();
     
+    // 檢查是否有任何球處於 solo 狀態
+    bool hasSoloedBall = false;
+    for (const auto& ball : balls)
+    {
+        if (ball.isSoloed)
+        {
+            hasSoloedBall = true;
+            break;
+        }
+    }
+    
     for (const auto& ball : balls)
     {
         // 將邏輯座標轉換為螢幕座標（考慮縮放）
@@ -163,10 +174,13 @@ void JYPadEditor::drawBalls(juce::Graphics& g)
         float screenX = screenPos.x;
         float screenY = screenPos.y;
         
-        // 計算透明度：如果 mute 則為 20%，否則為 100%
-        // 安全檢查 isMuted（防止未初始化）
+        // 計算透明度：
+        // 1. 如果球本身被 mute，則為 20%
+        // 2. 如果有其他球 solo 且這個球不是 solo，則為 20%（視覺上 mute）
+        // 3. 否則為 100%
         bool isMuted = ball.isMuted;
-        float alpha = isMuted ? 0.2f : 1.0f;
+        bool shouldAppearMuted = isMuted || (hasSoloedBall && !ball.isSoloed);
+        float alpha = shouldAppearMuted ? 0.2f : 1.0f;
         
         // 繪製球體陰影
         g.setColour(juce::Colour(0x40000000).withAlpha(alpha));
@@ -183,10 +197,10 @@ void JYPadEditor::drawBalls(juce::Graphics& g)
         g.drawEllipse(screenX - ballRadius, screenY - ballRadius, 
                      ballRadius * 2.0f, ballRadius * 2.0f, 1.5f);
         
-        // 繪製球體編號
+        // 繪製球體編號（顯示 source number 而不是系統編號）
         g.setColour(juce::Colours::white.withAlpha(alpha));
         g.setFont(10.0f);
-        g.drawText(juce::String(ball.id), 
+        g.drawText(juce::String(ball.sourceNumber), 
                    static_cast<int>(screenX - ballRadius), 
                    static_cast<int>(screenY - ballRadius), 
                    static_cast<int>(ballRadius * 2.0f), 
@@ -280,13 +294,25 @@ void JYPadEditor::mouseDown(const juce::MouseEvent& e)
     
     if (draggedBallId >= 0)
     {
-        // 檢查球是否被 mute，如果是則不允許移動
+        // 檢查球是否被 mute 或應該被視為 mute（solo 模式下非 solo 球不能移動）
         auto* ball = jyPad.getBall(draggedBallId);
         if (ball != nullptr)
         {
-            // 安全檢查 isMuted（防止未初始化）
-            bool isMuted = ball->isMuted;
-            if (isMuted)
+            // 檢查是否有任何球處於 solo 狀態
+            bool hasSoloedBall = false;
+            const auto& allBalls = jyPad.getAllBalls();
+            for (const auto& b : allBalls)
+            {
+                if (b.isSoloed)
+                {
+                    hasSoloedBall = true;
+                    break;
+                }
+            }
+            
+            // 如果球本身被 mute，或者有其他球 solo 且這個球不是 solo，則不能移動
+            bool shouldBeMuted = ball->isMuted || (hasSoloedBall && !ball->isSoloed);
+            if (shouldBeMuted)
             {
                 draggedBallId = -1;  // 不允許拖動
                 return;
@@ -306,13 +332,25 @@ void JYPadEditor::mouseDrag(const juce::MouseEvent& e)
 {
     if (draggedBallId >= 0)
     {
-        // 再次檢查球是否被 mute（防止在拖動過程中狀態改變）
+        // 再次檢查球是否被 mute 或應該被視為 mute（防止在拖動過程中狀態改變）
         auto* ball = jyPad.getBall(draggedBallId);
         if (ball != nullptr)
         {
-            // 安全檢查 isMuted（防止未初始化）
-            bool isMuted = ball->isMuted;
-            if (isMuted)
+            // 檢查是否有任何球處於 solo 狀態
+            bool hasSoloedBall = false;
+            const auto& allBalls = jyPad.getAllBalls();
+            for (const auto& b : allBalls)
+            {
+                if (b.isSoloed)
+                {
+                    hasSoloedBall = true;
+                    break;
+                }
+            }
+            
+            // 如果球本身被 mute，或者有其他球 solo 且這個球不是 solo，則不能移動
+            bool shouldBeMuted = ball->isMuted || (hasSoloedBall && !ball->isSoloed);
+            if (shouldBeMuted)
             {
                 draggedBallId = -1;  // 停止拖動
                 return;
@@ -456,6 +494,34 @@ void JYPadEditor::updateDisplay()
 
 //==============================================================================
 // 兩指縮放手勢處理
+void JYPadEditor::mouseWheelMove(const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
+{
+    // 檢查是否在 pad 區域內
+    auto bounds = getLocalBounds();
+    if (!bounds.contains(e.getPosition()))
+        return;
+    
+    // wheel.deltaY > 0 表示向下滾動（放大，range 變小，zoomScale 變大）
+    // wheel.deltaY < 0 表示向上滾動（縮小，range 變大，zoomScale 變小）
+    // 使用指數縮放以獲得平滑的縮放效果
+    const float zoomSpeed = 0.1f;  // 縮放速度係數
+    float zoomDelta = 1.0f + wheel.deltaY * zoomSpeed;
+    
+    // 限制縮放增量，避免過快
+    zoomDelta = juce::jlimit(0.9f, 1.1f, zoomDelta);
+    
+    // 更新縮放比例
+    zoomScale *= zoomDelta;
+    
+    // 限制縮放範圍（0.1x 到 10x）
+    zoomScale = juce::jlimit(0.1f, 10.0f, zoomScale);
+    
+    // 保存到 processor（用於持久化）
+    audioProcessor.zoomScale = zoomScale;
+    
+    repaint();
+}
+
 void JYPadEditor::mouseMagnify([[maybe_unused]] const juce::MouseEvent& e, float scaleFactor)
 {
     // scaleFactor > 1.0 表示放大，< 1.0 表示縮小
@@ -464,6 +530,9 @@ void JYPadEditor::mouseMagnify([[maybe_unused]] const juce::MouseEvent& e, float
     
     // 限制縮放範圍（0.1x 到 10x）
     zoomScale = juce::jlimit(0.1f, 10.0f, zoomScale);
+    
+    // 保存到 processor（用於持久化）
+    audioProcessor.zoomScale = zoomScale;
     
     repaint();
 }
@@ -526,6 +595,31 @@ void JYPadEditor::showContextMenu(juce::Point<int> screenPosition, int ballId, j
                                if (ball != nullptr)
                                {
                                    ball->isMuted = !ball->isMuted;
+                                   
+                                   // 發送 mute OSC 訊息
+                                   audioProcessor.sendMuteSoloOSCMessage(ballId, ball->isMuted, ball->isSoloed);
+                                   
+                                   // 如果有 solo 狀態，需要更新所有球的 OSC（因為 solo 會影響其他球）
+                                   const auto& allBalls = jyPad.getAllBalls();
+                                   bool hasSoloed = false;
+                                   for (const auto& b : allBalls)
+                                   {
+                                       if (b.isSoloed)
+                                       {
+                                           hasSoloed = true;
+                                           break;
+                                       }
+                                   }
+                                   
+                                   // 如果狀態改變影響了其他球，發送所有球的狀態
+                                   if (hasSoloed)
+                                   {
+                                       for (const auto& b : allBalls)
+                                       {
+                                           audioProcessor.sendMuteSoloOSCMessage(b.id, b.isMuted, b.isSoloed);
+                                       }
+                                   }
+                                   
                                    repaint();
                                }
                            }
@@ -536,6 +630,17 @@ void JYPadEditor::showContextMenu(juce::Point<int> screenPosition, int ballId, j
                                if (ball != nullptr)
                                {
                                    ball->isSoloed = !ball->isSoloed;
+                                   
+                                   // 發送 solo OSC 訊息
+                                   audioProcessor.sendMuteSoloOSCMessage(ballId, ball->isMuted, ball->isSoloed);
+                                   
+                                   // Solo 狀態改變會影響所有球，需要更新所有球的 OSC
+                                   const auto& allBalls = jyPad.getAllBalls();
+                                   for (const auto& b : allBalls)
+                                   {
+                                       audioProcessor.sendMuteSoloOSCMessage(b.id, b.isMuted, b.isSoloed);
+                                   }
+                                   
                                    repaint();
                                }
                            }
@@ -551,9 +656,29 @@ void JYPadEditor::showContextMenu(juce::Point<int> screenPosition, int ballId, j
                            }
                            else if (result == 7)
                            {
-                               // Clear Events - 清除這個球的所有路徑資料
-                               jyPad.clearRecordedEvents(ballId);
-                               repaint();
+                               // Clear Events - 清除這個球的所有路徑資料（需要確認）
+                               auto* ball = jyPad.getBall(ballId);
+                               if (ball != nullptr)
+                               {
+                                   juce::String message = "Are you sure you want to clear all recorded events for ball " + 
+                                                          juce::String(ball->sourceNumber) + "?";
+                                   
+                                   juce::AlertWindow::showOkCancelBox(
+                                       juce::MessageBoxIconType::QuestionIcon,
+                                       "Clear Events",
+                                       message,
+                                       "Clear",
+                                       "Cancel",
+                                       this,
+                                       juce::ModalCallbackFunction::create([this, ballId](int result) {
+                                           if (result == 1)  // OK 按鈕
+                                           {
+                                               jyPad.clearRecordedEvents(ballId);
+                                               repaint();
+                                           }
+                                       })
+                                   );
+                               }
                            }
                            else if (result == 8)
                            {
@@ -576,10 +701,8 @@ void JYPadEditor::showContextMenu(juce::Point<int> screenPosition, int ballId, j
                                auto timeInfo = audioProcessor.getTimeCodeInfo();
                                if (timeInfo.isValid)
                                {
-                                   jyPad.tweenToNext(ballId, timeInfo.ppqPosition, 
-                                                     timeInfo.bpm, 
-                                                     timeInfo.timeSignatureNumerator, 
-                                                     timeInfo.timeSignatureDenominator);
+                                   // 使用固定的步數（例如 10 步）
+                                   jyPad.tweenToNext(ballId, timeInfo.ppqPosition, 10);
                                    repaint();
                                }
                            }
@@ -598,7 +721,7 @@ void JYPadEditor::showAddSourceMenu(juce::Point<int> localPosition)
     }
     
     SourceEditWindow::SourceInfo info;
-    info.oscPrefix = "/jypad/ball";
+    info.oscPrefix = "/track/" + juce::String(nextNumber);  // 預設 prefix 為 /track/n
     info.color = juce::Colour(0xff4a90e2);
     info.sourceName = "Source " + juce::String(nextNumber);
     info.sourceNumber = nextNumber;
@@ -609,14 +732,21 @@ void JYPadEditor::showAddSourceMenu(juce::Point<int> localPosition)
     SourceEditWindow::showModal("Add Source", info, 
         [this, localPosition](const SourceEditWindow::SourceInfo& sourceInfo)
         {
-            // 創建新球，位置在右鍵點擊的位置
-            int newBallId = sourceInfo.sourceNumber;
-            auto logicPos = screenToLogic(localPosition);
+            // 計算下一個唯一的 ballId（不應該使用 sourceNumber，因為 sourceNumber 可能重複）
+            int nextBallId = 1;
+            const auto& balls = jyPad.getAllBalls();
+            for (const auto& ball : balls)
+            {
+                if (ball.id >= nextBallId)
+                    nextBallId = ball.id + 1;
+            }
             
-            jyPad.addBall(newBallId, logicPos.x, logicPos.y);
+            // 創建新球，位置在右鍵點擊的位置（使用唯一的 ballId）
+            auto logicPos = screenToLogic(localPosition);
+            jyPad.addBall(nextBallId, logicPos.x, logicPos.y);
             
             // 更新球的 source 資訊
-            auto* ball = jyPad.getBall(newBallId);
+            auto* ball = jyPad.getBall(nextBallId);
             if (ball != nullptr)
             {
                 ball->oscPrefix = sourceInfo.oscPrefix;

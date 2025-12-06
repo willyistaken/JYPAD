@@ -11,14 +11,16 @@ add_subdirectory(JUCE)
 
 # 創建插件目標
 juce_add_plugin(PlugDataCustomObject
-    COMPANY_NAME "YourCompany"
+    COMPANY_NAME "Jinyao Lin Audio Lab"
     PLUGIN_MANUFACTURER_CODE YrCo
     PLUGIN_CODE PDCu
-    FORMATS AU VST3 Standalone AAX
+    FORMATS AU Standalone
+    # AAX 和 VST3 暫時禁用，release 時再啟用以節省編譯時間
+    # FORMATS AU VST3 Standalone AAX
     PRODUCT_NAME "JYPad"
     DESCRIPTION "A 2D XY Pad controller with multiple draggable balls for PlugData"
     VERSION 0.1.0
-    PLUGIN_MANUFACTURER "YourCompany"
+    PLUGIN_MANUFACTURER "Jinyao Lin Audio Lab"
     AAX_CATEGORY MIDIEffect  # AAX 插件類別：MIDI 效果
 )
 

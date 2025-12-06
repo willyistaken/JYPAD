@@ -24,7 +24,7 @@ PlugDataCustomObjectAudioProcessorEditor::PlugDataCustomObjectAudioProcessorEdit
     DEBUG_LOG("PluginEditor: Setting up midiTimeLabel - STEP 5");
     midiTimeLabel.setText("1.1.000", juce::dontSendNotification);
     midiTimeLabel.setColour(juce::Label::textColourId, juce::Colour(0xff00ff00));  // 綠色 digital 風格
-    midiTimeLabel.setJustificationType(juce::Justification::centredLeft);
+    midiTimeLabel.setJustificationType(juce::Justification::centredRight);
     // 使用 monospace font 作為 digital font
     juce::Font digitalFont = juce::Font(juce::FontOptions().withHeight(18.0f));
     digitalFont = digitalFont.boldened();
@@ -37,7 +37,7 @@ PlugDataCustomObjectAudioProcessorEditor::PlugDataCustomObjectAudioProcessorEdit
     DEBUG_LOG("PluginEditor: Setting up timeCodeLabel - STEP 6.5");
     timeCodeLabel.setText("0:00.000", juce::dontSendNotification);
     timeCodeLabel.setColour(juce::Label::textColourId, juce::Colour(0xff00ff00));  // 綠色 digital 風格
-    timeCodeLabel.setJustificationType(juce::Justification::centredLeft);
+    timeCodeLabel.setJustificationType(juce::Justification::centredRight);
     timeCodeLabel.setFont(digitalFont);
     addAndMakeVisible(&timeCodeLabel);
     DEBUG_LOG("PluginEditor: timeCodeLabel added - STEP 6.6");
@@ -46,7 +46,7 @@ PlugDataCustomObjectAudioProcessorEditor::PlugDataCustomObjectAudioProcessorEdit
     DEBUG_LOG("PluginEditor: Setting up bpmInfoLabel - STEP 6.7");
     bpmInfoLabel.setText("120.0 BPM", juce::dontSendNotification);
     bpmInfoLabel.setColour(juce::Label::textColourId, juce::Colours::white);
-    bpmInfoLabel.setJustificationType(juce::Justification::centredRight);
+    bpmInfoLabel.setJustificationType(juce::Justification::centredLeft);
     bpmInfoLabel.setFont(juce::Font(juce::FontOptions().withHeight(14.0f)));
     addAndMakeVisible(&bpmInfoLabel);
     DEBUG_LOG("PluginEditor: bpmInfoLabel added - STEP 6.8");
@@ -61,7 +61,7 @@ PlugDataCustomObjectAudioProcessorEditor::PlugDataCustomObjectAudioProcessorEdit
     
     // 設定輸出標籤
     DEBUG_LOG("PluginEditor: Setting up outputLabel - STEP 11");
-    outputLabel.setText ("Output (Ball ID x y):", juce::dontSendNotification);
+    outputLabel.setText ("OSC Message Window:", juce::dontSendNotification);
     outputLabel.setColour (juce::Label::textColourId, juce::Colours::white);
     outputLabel.setJustificationType (juce::Justification::centredLeft);
     outputLabel.setFont(juce::Font(juce::FontOptions().withHeight(14.0f)));
@@ -72,51 +72,25 @@ PlugDataCustomObjectAudioProcessorEditor::PlugDataCustomObjectAudioProcessorEdit
     DEBUG_LOG("PluginEditor: Setting up outputText - STEP 13");
     outputText.setMultiLine (true);
     outputText.setReadOnly (true);
-    outputText.setFont (juce::Font(juce::FontOptions().withHeight(14.0f)));
+    outputText.setFont (juce::Font(juce::FontOptions().withHeight(12.0f)));
+    outputText.setScrollbarsShown(true);
     outputText.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff2a2a2a));
     outputText.setColour (juce::TextEditor::textColourId, juce::Colours::white);
     addAndMakeVisible (&outputText);
     DEBUG_LOG("PluginEditor: outputText added - STEP 14");
-    
-    // 設定 JYPad 的回調，當球移動時更新輸出和發送 OSC
+    // 設定 JYPad 的回調，當球移動時發送 OSC（OSC 訊息會自動記錄到訊息視窗）
     DEBUG_LOG("PluginEditor: Setting up JYPad callback - STEP 15");
     audioProcessor.jyPad.onBallMoved = [this](int ballId, float x, float y) {
         // 座標乘以 10 用於顯示和輸出
         float outputX = x * 10.0f;
         float outputY = y * 10.0f;
         
-        // 更新 UI 輸出（使用乘以 10 後的座標）
-        juce::String output = juce::String(ballId) + " " + 
-                              juce::String(outputX, 2) + " " + 
-                              juce::String(outputY, 2);
-        
-        // 如果已經在訊息線程中，直接更新；否則使用異步更新
-        if (juce::MessageManager::getInstance()->isThisTheMessageThread())
-        {
-            outputText.setText(output, juce::dontSendNotification);
-        }
-        else
-        {
-            juce::MessageManager::callAsync([this, output]() {
-                outputText.setText(output, juce::dontSendNotification);
-            });
-        }
-        
-        // 發送 OSC 訊息（使用乘以 10 後的座標）
+        // 發送 OSC 訊息（使用乘以 10 後的座標，訊息會自動記錄到訊息視窗）
         if (audioProcessor.oscSettings.enabled)
         {
             audioProcessor.sendOSCMessage(ballId, outputX, outputY);
         }
     };
-    
-    // 初始化輸出顯示
-    if (audioProcessor.jyPad.getNumBalls() > 0)
-    {
-        auto& firstBall = audioProcessor.jyPad.getAllBalls()[0];
-        outputText.setText(audioProcessor.jyPad.getBallOutputString(firstBall.id), 
-                          juce::dontSendNotification);
-    }
-    
     // OSC Data 視窗按鈕（右上角，美化樣式）
     DEBUG_LOG("PluginEditor: Setting up OSC Data button - STEP 17");
     openOSCDataButton.setButtonText("OSC DATA");
@@ -139,7 +113,8 @@ PlugDataCustomObjectAudioProcessorEditor::PlugDataCustomObjectAudioProcessorEdit
             oscDataWindow->toFront(true);
         }
     };
-    addAndMakeVisible(&openOSCDataButton);
+    openOSCDataButton.setVisible(false);
+    addChildComponent(&openOSCDataButton);
     DEBUG_LOG("PluginEditor: OSC Data button added - STEP 18");
     
     // Network Settings 視窗按鈕（右上角，美化樣式）
@@ -243,6 +218,11 @@ void PlugDataCustomObjectAudioProcessorEditor::paint (juce::Graphics& g)
     g.setFont (24.0f);
     g.drawFittedText ("JYPad", getLocalBounds().removeFromTop (50),
                       juce::Justification::centred, 1);
+    auto timeCodeBox = getLocalBounds().reduced(20).removeFromTop(50).removeFromLeft(115);
+    g.setColour(juce::Colour(0xff000000));  // 黑色背景
+    g.fillRoundedRectangle(timeCodeBox.toFloat(), 4.0f);
+    g.setColour(juce::Colour(0xff404040));  // 深灰色邊框
+    g.drawRoundedRectangle(timeCodeBox.toFloat(), 4.0f, 1.5f);
 }
 
 void PlugDataCustomObjectAudioProcessorEditor::resized()
@@ -250,23 +230,24 @@ void PlugDataCustomObjectAudioProcessorEditor::resized()
     // 設定元件位置
     auto area = getLocalBounds().reduced (20);
     
-    // 時間碼區域（左上角，兩行顯示，放在最上方）
-    auto timeCodeArea = area.removeFromTop(50).removeFromLeft(300);  // 增加寬度以容納更多位數
-    midiTimeLabel.setBounds(timeCodeArea.removeFromTop(25));  // MIDI time 在第一行
-    timeCodeLabel.setBounds(timeCodeArea.removeFromTop(25));  // Time code 在第二行
+    // 時間碼區域（左上角，兩行顯示，放在最上方，帶黑底方框）
+    auto timeCodeArea = area.removeFromTop(50).removeFromLeft(115);  // 增加寬度以容納更多位數
+    // 在方框內留出內邊距
+    auto timeCodeInnerArea = timeCodeArea.reduced(6, 6);
+    midiTimeLabel.setBounds(timeCodeInnerArea.removeFromTop(19));  // MIDI time 在第一行
+    timeCodeLabel.setBounds(timeCodeInnerArea.removeFromTop(19));  // Time code 在第二行
     
-    // BPM 資訊（右側，與時間碼同一行）
-    auto topRightArea = getLocalBounds().reduced(20).removeFromTop(50).removeFromRight(200);
-    bpmInfoLabel.setBounds(topRightArea);
+    // BPM 資訊（左側，與時間碼方框相鄰）
+    auto bpmArea = getLocalBounds().reduced(20).removeFromTop(50);
+    bpmArea.removeFromLeft(135);  // 跳過時間碼方框（115 + 20 間距）
+    bpmArea = bpmArea.removeFromLeft(80);  // BPM 標籤寬度（縮短）
+    bpmInfoLabel.setJustificationType(juce::Justification::centredLeft);  // 改為左對齊
+    bpmInfoLabel.setBounds(bpmArea);
     
-    // 右上角按鈕區域（在時間碼下方）
-    auto topArea = area.removeFromTop(35);
-    auto buttonArea = topArea.removeFromRight(220);  // 預留右側空間給按鈕
-    
-    // 兩個按鈕並排，右對齊，使用固定寬度
-    openNetworkSettingsButton.setBounds(buttonArea.removeFromRight(100).reduced(2));
-    buttonArea.removeFromRight(8);  // 按鈕間距
-    openOSCDataButton.setBounds(buttonArea.removeFromRight(100).reduced(2));
+    // Network 按鈕（右上角，與時間碼/BPM 同一水平線）
+    auto headerArea = getLocalBounds().reduced(20).removeFromTop(50);
+    auto buttonArea = headerArea.removeFromRight(80);  // 從右側分配空間給按鈕
+    openNetworkSettingsButton.setBounds(buttonArea.removeFromRight(70).reduced(2));  // 按鈕寬度 70px
     
     area.removeFromTop(10);  // 標題區域間距
     
@@ -283,7 +264,6 @@ void PlugDataCustomObjectAudioProcessorEditor::resized()
     outputText.setBounds(area.removeFromTop(100));
 }
 
-//==============================================================================
 void PlugDataCustomObjectAudioProcessorEditor::timerCallback()
 {
     // 更新時間碼顯示
@@ -497,4 +477,37 @@ juce::String PlugDataCustomObjectAudioProcessorEditor::formatBPMInfo(double bpm,
         info += " ⏸";
     
     return info;
+}
+
+//==============================================================================
+void PlugDataCustomObjectAudioProcessorEditor::logOSCMessage(const juce::String& message)
+{
+    // 在訊息線程中更新 OSC 訊息視窗
+    if (juce::MessageManager::getInstance()->isThisTheMessageThread())
+    {
+        juce::String currentText = outputText.getText();
+        juce::StringArray lines;
+        lines.addTokens(currentText, "\n", "");
+        
+        // 添加新訊息
+        lines.add(message);
+        
+        // 只保留最後 100 行
+        while (lines.size() > 100)
+        {
+            lines.remove(0);
+        }
+        
+        // 更新文字並自動捲動到底部
+        juce::String newText = lines.joinIntoString("\n");
+        outputText.setText(newText, juce::dontSendNotification);
+        outputText.moveCaretToEnd();
+    }
+    else
+    {
+        // 如果不在訊息線程中，使用異步更新
+        juce::MessageManager::callAsync([this, message]() {
+            logOSCMessage(message);
+        });
+    }
 }

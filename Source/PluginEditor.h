@@ -27,10 +27,19 @@ public:
     // 當視窗可見性改變時，同步關閉子視窗
     void visibilityChanged() override;
     
+    // 記錄 OSC 訊息到訊息視窗（公開方法，供 Processor 調用）
+    void logOSCMessage(const juce::String& message);
+    
+public:
+    // 記錄 OSC 訊息到訊息視窗（供 Processor 調用）
+
 private:
     // 追蹤之前的播放狀態，用於檢測狀態變化
     bool wasPlaying = false;
     double lastMidiTime = -1.0;  // 追蹤上一次的 MIDI time
+
+public:
+    // 記錄 OSC 訊息到訊息視窗（供 Processor 調用）
 
 private:
     // This reference is provided as a quick way for your editor to
@@ -108,6 +117,7 @@ private:
     juce::String formatTimeCode(double timeInSeconds) const;
     juce::String formatMIDITime(double ppqPosition, double bpm) const;
     juce::String formatBPMInfo(double bpm, bool isPlaying) const;
+    
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PlugDataCustomObjectAudioProcessorEditor)
 };

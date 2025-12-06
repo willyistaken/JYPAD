@@ -9,12 +9,18 @@
 //==============================================================================
 /**
 */
+// 前向聲明
+class PlugDataCustomObjectAudioProcessorEditor;
+
 class PlugDataCustomObjectAudioProcessor  : public juce::AudioProcessor
 {
 public:
     //==============================================================================
     PlugDataCustomObjectAudioProcessor();
     ~PlugDataCustomObjectAudioProcessor() override;
+    
+    // 設置 Editor 指針（用於記錄 OSC 訊息）
+    void setEditor(PlugDataCustomObjectAudioProcessorEditor* editor) { oscMessageEditor = editor; }
 
     //==============================================================================
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
@@ -78,8 +84,15 @@ public:
     void updateOSCConnection();
     
     // 發送 OSC 訊息（當球移動時）
-    // 使用球的 oscPrefix 作為地址前綴，後面接上 x, y, z 座標
+    // 格式：{osc_prefix}/xy x y（暫時不發送 z 值）
+    // TODO: 未來實作 z 軸錄影後，可以改為發送 x, y, z
     void sendOSCMessage(int ballId, float x, float y, float z = 0.0f);
+    
+    // 發送 mute/solo OSC 訊息
+    // 格式：{osc_prefix}/n/mute 1 或 0
+    // 格式：{osc_prefix}/n/solo 1 或 0
+    // 其中 n 是 source number
+    void sendMuteSoloOSCMessage(int ballId, bool isMute, bool isSolo);
     
     // OSC 設置的線程安全鎖（供 UI 使用）
     mutable juce::CriticalSection oscSettingsLock;
@@ -106,6 +119,9 @@ private:
     // 時間碼資訊緩存（在 processBlock 中更新，在 UI 中讀取）
     mutable juce::CriticalSection timeCodeLock;
     TimeCodeInfo cachedTimeCodeInfo;
+    
+    // Editor 指針（用於記錄 OSC 訊息）
+    PlugDataCustomObjectAudioProcessorEditor* oscMessageEditor = nullptr;
     
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PlugDataCustomObjectAudioProcessor)
 };

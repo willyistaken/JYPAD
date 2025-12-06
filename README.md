@@ -1,15 +1,35 @@
-# XYPad - PlugData 自訂物件
+# JYPad - PlugData 自訂物件 (V0.3.0)
 
-這是一個使用 JUCE 框架開發的 PlugData 自訂物件，實現了一個 2D XY Pad 控制器，可以顯示和控制多個可拖動的圓球。
+這是一個使用 JUCE 框架開發的 PlugData 自訂物件，實現了一個 2D Pad 控制器，可以顯示和控制多個可拖動的圓球，並支援 OSC 訊號傳輸與自動化錄製。
+
+## 版本資訊 V0.3.0 (2025-12)
+
+**主要更新：效能與穩定性優化**
+
+1.  **記憶體優化**
+    *   修復了錄製時資料重複寫入兩次的問題，減少 50% 記憶體佔用。
+    *   錄製時完全暫存於記憶體，僅在存檔時寫入磁碟，確保最高錄製效能。
+
+2.  **效能優化 (CPU & UI)**
+    *   **搜尋演算法升級**：將錄製資料的搜尋從線性搜尋 (O(N)) 升級為二元搜尋 (O(log N))，大幅提升大量資料回放時的效率。
+    *   **UI 渲染優化**：移除了計時器中的強制重繪 (Force Repaint)，改為事件驅動 (Event-Driven) 更新。只有當球體實際移動時才更新畫面。
+    *   **冗餘檢查**：加入 Epsilon 檢查，當滑鼠微小移動或數值未變動時，自動忽略處理，節省 OSC 頻寬與 CPU 資源。
+
+3.  **穩定性修復**
+    *   **網路不卡頓**：移除了 OSC 發送失敗時的同步重連邏輯，解決了網路斷線會導致音訊/UI 卡死的問題。
+    *   **執行緒安全**：改用 `std::atomic` 處理跨執行緒資料，移除潛在的 Deadlock 風險。
+    *   **UI 修正**：修復了 Replay 時 UI 不會更新的 Bug。
+    *   **在地化**：將「清除事件」等確認視窗中文化/英文化修正。
 
 ## 功能特點
 
-- **2D XY Pad 控制器**：在 2D 平面上顯示和控制多個圓球
+- **2D Pad 控制器**：在 2D 平面上顯示和控制多個圓球
 - **座標系統**：中心點為 (0, 0)，座標範圍為 -1.0 到 1.0
 - **多球體支援**：可以添加和管理多個圓球，每個球都有唯一的編號
-- **即時輸出**：移動圓球時會輸出格式化的字串，例如：`1 0.3 0.5`（球編號 x座標 y座標）
-- **視覺化 UI**：使用 JUCE 繪製的現代化界面，包含網格和彩色圓球
-- **狀態儲存**：支援儲存和載入圓球位置
+- **OSC 傳輸**：支援自動發送 OSC 訊號 (/track/n/x, /track/n/y)
+- **自動化錄製**：內建記憶體錄製功能，可記錄並回放球體移動軌跡
+- **視覺化 UI**：使用 JUCE 繪製的現代化界面，包含網格、殘影與閃爍指示
+- **狀態儲存**：支援儲存和載入所有球體與錄製資料到 DAW 專案中
 
 ## 專案結構
 
@@ -21,126 +41,64 @@ plugins/
 │   ├── PluginProcessor.cpp # 音訊處理器實作
 │   ├── PluginEditor.h     # UI 編輯器標頭檔
 │   ├── PluginEditor.cpp   # UI 編輯器實作
-│   ├── XYPad.h            # XYPad 物件標頭檔
-│   ├── XYPad.cpp          # XYPad 物件實作
-│   ├── XYPadEditor.h      # XYPad 視覺化編輯器標頭檔
-│   └── XYPadEditor.cpp    # XYPad 視覺化編輯器實作
+│   ├── JYPad.h            # JYPad 物件標頭檔 (核心邏輯)
+│   ├── JYPad.cpp          # JYPad 物件實作
+│   ├── JYPadEditor.h      # JYPad 視覺化編輯器標頭檔
+│   └── JYPadEditor.cpp    # JYPad 視覺化編輯器實作
 └── README.md              # 本文件
 ```
 
 ## 前置需求
 
-1. **JUCE 框架**
-   - 下載 JUCE 並放置在專案目錄中，或使用 git submodule
-   - 建議版本：JUCE 7.0 或更新版本
+1. **JUCE 框架** (推薦 JUCE 7+)
+2. **CMake** (3.22+)
+3. **C++ 編譯器** (Xcode/Visual Studio/GCC)
 
-2. **CMake** (3.22 或更新版本)
+## 建置與安裝
 
-3. **編譯器**
-   - macOS: Xcode (最新版本)
-   - Windows: Visual Studio 2019 或更新版本
-   - Linux: GCC 或 Clang
-
-## 設定專案
-
-### 1. 下載 JUCE
+使用我們提供的安裝腳本即可自動編譯並安裝：
 
 ```bash
-# 選項 1: 使用 git submodule
 cd /Users/jinyaolin/plugins
-git submodule add https://github.com/juce-framework/JUCE.git JUCE
-
-# 選項 2: 手動下載並解壓到專案目錄
-# 確保 JUCE 目錄位於專案根目錄
+sh install.sh
 ```
 
-### 2. 生成構建文件
+手動編譯：
 
 ```bash
-# 創建構建目錄
 mkdir build
 cd build
-
-# 生成專案文件
 cmake ..
-
-# macOS: 使用 Xcode
-open PlugDataCustomObject.xcodeproj
-
-# 或直接編譯
 cmake --build . --config Release
 ```
 
 ## 使用說明
 
-### 座標系統
+### 座標與操作
+- **中心點**：(0, 0)
+- **範圍**：-1.0 到 1.0
+- **基本操作**：
+    - **左鍵拖曳**：移動球體 (若在錄製模式則會記錄軌跡)
+    - **雙擊**：切換球體的 Recording 狀態
+    - **右鍵**：開啟右鍵選單 (Edit, Delete, Mute, Solo, Clear Events)
 
-- **中心點**：XY Pad 的中心為 (0, 0)
-- **座標範圍**：X 和 Y 軸的範圍都是 -1.0 到 1.0
-- **輸出格式**：當圓球移動時，會輸出格式為 `球編號 x座標 y座標` 的字串
-  - 例如：`1 0.3 0.5` 表示 1 號球在 X=0.3, Y=0.5 的位置
-
-### 操作方式
-
-1. **拖動圓球**：點擊並拖動圓球來改變其位置
-2. **點擊空白處**：點擊空白區域會移動第一個圓球到該位置
-3. **即時輸出**：移動圓球時，輸出區域會即時顯示當前位置資訊
-
-### 程式化使用
+### 程式化接口 (C++)
 
 ```cpp
-// 添加新球
-xyPad.addBall(1, 0.0f, 0.0f);  // 在中心添加 1 號球
-xyPad.addBall(2, 0.5f, -0.3f); // 添加 2 號球
+// 範例：在 ProcessBlock 中更新
+jyPad.processBlock(buffer, midiMessages);
 
-// 設定球的位置
-xyPad.setBallPosition(1, 0.3f, 0.5f);
+// 獲取球體並設定位置
+jyPad.setBallPosition(1, 0.5f, 0.5f);
 
-// 獲取輸出字串
-juce::String output = xyPad.getBallOutputString(1);  // 返回 "1 0.300 0.500"
-
-// 獲取所有球
-const auto& balls = xyPad.getAllBalls();
-for (const auto& ball : balls) {
-    // 處理每個球
-}
+// 錄製事件 (直接寫入記憶體)
+jyPad.recordEvent(1, midiTime, x, y, z);
 ```
 
-## 自訂開發
-
-### 修改 UI 外觀
-
-在 `Source/XYPadEditor.cpp` 中，您可以：
-- 修改 `ballRadius` 來改變圓球大小
-- 在 `drawGrid()` 中自訂網格樣式
-- 在 `drawBalls()` 中自訂圓球顏色和樣式
-
-### 添加功能
-
-- **添加更多圓球**：在 `XYPad` 類別中添加 `addBall()` 方法調用
-- **自訂輸出格式**：修改 `getBallOutputString()` 方法
-- **添加音訊處理**：在 `XYPad::processBlock()` 中實現 DSP 邏輯
-
-## 編譯輸出
-
-編譯完成後，插件將生成在：
-- **macOS**: `build/PlugDataCustomObject_artefacts/Release/AU/` 或 `VST3/`
-- **Windows**: `build/PlugDataCustomObject_artefacts/Release/VST3/`
-- **Linux**: `build/PlugDataCustomObject_artefacts/Release/LV2/` 或 `VST3/`
-
-## 在 PlugData 中使用
-
-1. 將編譯好的插件安裝到系統的插件目錄
-2. 在 PlugData 中創建新的物件
-3. 使用 XYPad 物件進行 2D 控制
-4. 連接輸出到其他物件來處理座標數據
-
-## 技術細節
-
-- **座標轉換**：UI 座標 (0-1) 與邏輯座標 (-1 到 1) 之間的自動轉換
-- **回調機制**：使用 `std::function` 實現球移動時的回調
-- **狀態管理**：使用 JUCE 的 `MemoryOutputStream` 和 `MemoryInputStream` 進行狀態儲存
+## 編譯輸出位置
+- **macOS (AU)**: `~/Library/Audio/Plug-Ins/Components/JYPad.component`
+- **macOS (VST3)**: `~/Library/Audio/Plug-Ins/VST3/JYPad.vst3`
 
 ## 授權
+Private / Custom Implementation for PlugData.
 
-請根據您的需求設定適當的授權條款。

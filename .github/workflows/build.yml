@@ -1,0 +1,103 @@
+name: Build JYPad
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build_macos:
+    name: macOS Build
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install JUCE (if not submodule)
+        # Fallback: if JUCE dir doesn't exist, clone it (assuming JUCE 7)
+        run: |
+          if [ ! -d "JUCE" ]; then
+            git clone https://github.com/juce-framework/JUCE.git --branch 7.0.9 --depth 1
+          fi
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+
+      - name: Build
+        run: cmake --build build --config Release --parallel 4
+
+      - name: Upload Artifacts (AU)
+        uses: actions/upload-artifact@v4
+        with:
+          name: JYPad-macOS-AU
+          path: build/PlugDataCustomObject_artefacts/Release/AU/JYPad.component
+
+      - name: Upload Artifacts (VST3)
+        uses: actions/upload-artifact@v4
+        with:
+          name: JYPad-macOS-VST3
+          path: build/PlugDataCustomObject_artefacts/Release/VST3/JYPad.vst3
+
+  build_windows:
+    name: Windows Build
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install JUCE (if not submodule)
+        shell: bash
+        run: |
+          if [ ! -d "JUCE" ]; then
+            git clone https://github.com/juce-framework/JUCE.git --branch 7.0.9 --depth 1
+          fi
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel 4
+
+      - name: Upload Artifacts (VST3)
+        uses: actions/upload-artifact@v4
+        with:
+          name: JYPad-Windows-VST3
+          path: build/PlugDataCustomObject_artefacts/Release/VST3/JYPad.vst3
+
+  build_linux:
+    name: Linux Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install JUCE (if not submodule)
+        run: |
+          if [ ! -d "JUCE" ]; then
+            git clone https://github.com/juce-framework/JUCE.git --branch 7.0.9 --depth 1
+          fi
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libx11-dev libxinerama-dev libxext-dev libfreetype6-dev libwebkit2gtk-4.0-dev libglu1-mesa-dev libjack-jackd2-dev curl
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel 4
+
+      - name: Upload Artifacts (VST3)
+        using: actions/upload-artifact@v4
+        with:
+          name: JYPad-Linux-VST3
+          path: build/PlugDataCustomObject_artefacts/Release/VST3/JYPad.vst3

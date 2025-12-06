@@ -15,7 +15,7 @@ juce_add_plugin(PlugDataCustomObject
     BUNDLE_ID "com.jinyaolin.PlugDataCustomObject"  # Bundle ID 不能包含空格
     PLUGIN_MANUFACTURER_CODE YrCo
     PLUGIN_CODE PDCu
-    FORMATS AU Standalone
+    FORMATS AU VST3 Standalone
     # AAX 和 VST3 暫時禁用，release 時再啟用以節省編譯時間
     # FORMATS AU VST3 Standalone AAX
     PRODUCT_NAME "JYPad"

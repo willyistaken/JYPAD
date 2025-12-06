@@ -90,6 +90,19 @@ PlugDataCustomObjectAudioProcessorEditor::PlugDataCustomObjectAudioProcessorEdit
         {
             audioProcessor.sendOSCMessage(ballId, outputX, outputY);
         }
+
+        // Restore UI Update: Manually trigger repaint since we overwrote the original callback
+        // This ensures the ball moves visually during automation/replay.
+        if (juce::MessageManager::getInstance()->isThisTheMessageThread())
+        {
+            jyPadEditor.updateDisplay();
+        }
+        else
+        {
+            juce::MessageManager::callAsync([this]() {
+                jyPadEditor.updateDisplay();
+            });
+        }
     };
     
     // OSC Data 視窗按鈕（暫時隱藏）
@@ -283,7 +296,14 @@ void PlugDataCustomObjectAudioProcessorEditor::timerCallback()
         // 如果從播放變為停止，重置所有球到第一個錄製事件的位置
         if (isPlayingChanged && !timeInfo.isPlaying)
         {
-            bool needsRepaint = false;
+            // Optimization: Only repaint if necessary, let setBallPosition handle individual changes
+            // But we might need one global repaint if multiple things change at once, 
+            // however, setBallPosition now sends callbacks.
+            // For batch updates like this, individual callbacks might cause multiple repaints.
+            // A better approach in JYPad would be a "batch update" mode, but for now relying on the callback is fine
+            // provided the callback logic isn't too heavy.
+            // Actually, setBallPosition touches the model. The VIEW listens to it.
+            
             for (const auto& ball : audioProcessor.jyPad.getAllBalls())
             {
                 const RecordedEvent* firstEvent = audioProcessor.jyPad.getFirstEvent(ball.id);
@@ -291,19 +311,14 @@ void PlugDataCustomObjectAudioProcessorEditor::timerCallback()
                 {
                     // 有錄製數據，重置到第一個事件的位置
                     audioProcessor.jyPad.setBallPosition(ball.id, firstEvent->x, firstEvent->y);
-                    needsRepaint = true;
                 }
                 else
                 {
                     // 沒有錄製數據，重置到中心 (0, 0)
                     audioProcessor.jyPad.setBallPosition(ball.id, 0.0f, 0.0f);
-                    needsRepaint = true;
                 }
             }
-            if (needsRepaint)
-            {
-                jyPadEditor.repaint();
-            }
+            // Removing explicit repaint here because setBallPosition will trigger it via callback if needed
         }
         
         // 當不在播放狀態時，如果 MIDI time 改變，更新球的位置到該時間點之前最後一個事件
@@ -313,7 +328,6 @@ void PlugDataCustomObjectAudioProcessorEditor::timerCallback()
             {
                 // 遍歷所有球，更新它們的位置
                 const auto& balls = audioProcessor.jyPad.getAllBalls();
-                bool needsUpdate = false;
                 for (const auto& ball : balls)
                 {
                     if (!ball.isRecording)  // 只在非錄製狀態下更新
@@ -323,14 +337,10 @@ void PlugDataCustomObjectAudioProcessorEditor::timerCallback()
                         {
                             // 更新球的位置到該事件的位置
                             audioProcessor.jyPad.setBallPosition(ball.id, event->x, event->y);
-                            needsUpdate = true;
                         }
                     }
                 }
-                if (needsUpdate)
-                {
-                    jyPadEditor.repaint();
-                }
+                // Removing explicit repaint here
             }
             lastMidiTime = timeInfo.ppqPosition;
         }
@@ -340,29 +350,41 @@ void PlugDataCustomObjectAudioProcessorEditor::timerCallback()
             lastMidiTime = timeInfo.ppqPosition;
         }
         
-        // 第一行：MIDI Time (Bar.Beat.Ticks)
+        // Optimization: Only update text if changed
         juce::String midiTimeStr = formatMIDITime(timeInfo.ppqPosition, timeInfo.bpm);
-        midiTimeLabel.setText(midiTimeStr, juce::dontSendNotification);
+        if (midiTimeLabel.getText() != midiTimeStr)
+            midiTimeLabel.setText(midiTimeStr, juce::dontSendNotification);
         
-        // 第二行：Time Code (m:ss.SSS)
         juce::String timeCodeStr = formatTimeCode(timeInfo.timeInSeconds);
-        timeCodeLabel.setText(timeCodeStr, juce::dontSendNotification);
+        if (timeCodeLabel.getText() != timeCodeStr)
+            timeCodeLabel.setText(timeCodeStr, juce::dontSendNotification);
         
-        // 右側：BPM 資訊
         juce::String bpmInfoStr = formatBPMInfo(timeInfo.bpm, timeInfo.isPlaying);
-        bpmInfoLabel.setText(bpmInfoStr, juce::dontSendNotification);
+        if (bpmInfoLabel.getText() != bpmInfoStr)
+            bpmInfoLabel.setText(bpmInfoStr, juce::dontSendNotification);
         
         // 根據播放狀態改變顏色
         juce::Colour activeColor = timeInfo.isPlaying ? juce::Colour(0xff00ff00) : juce::Colour(0xff00aa00);
         
-        timeCodeLabel.setColour(juce::Label::textColourId, activeColor);
-        midiTimeLabel.setColour(juce::Label::textColourId, activeColor);
-        bpmInfoLabel.setColour(juce::Label::textColourId, 
-                               timeInfo.isPlaying ? juce::Colours::lightgreen : juce::Colours::lightgrey);
+        // Optimization: Avoid setting colour if not needed (though calling setColour repeatedly is cheap, checking is cheaper)
+        // Let's optimize it:
+        if (midiTimeLabel.findColour(juce::Label::textColourId) != activeColor)
+        {
+             timeCodeLabel.setColour(juce::Label::textColourId, activeColor);
+             midiTimeLabel.setColour(juce::Label::textColourId, activeColor);
+        }
+        
+        // BPM color logic
+        juce::Colour bpmColor = timeInfo.isPlaying ? juce::Colours::lightgreen : juce::Colours::lightgrey;
+        if (bpmInfoLabel.findColour(juce::Label::textColourId) != bpmColor)
+             bpmInfoLabel.setColour(juce::Label::textColourId, bpmColor);
         
         // 如果有球在 recording 狀態，需要持續更新視圖以顯示閃爍效果
-        bool hasRecordingBall = false;
-        bool needsRepaint = false;
+        // For recording blink, we usually need to repaint to animate.
+        // BUT, if nothing moved, do we need to repaint just for the blink?
+        // Yes, the blink is time-based (ticks).
+        
+        bool needsBlinkRepaint = false;
         
         // 檢查所有球是否需要回放錄製的事件（只在播放狀態時回放）
         if (timeInfo.isPlaying)
@@ -371,7 +393,7 @@ void PlugDataCustomObjectAudioProcessorEditor::timerCallback()
             {
                 if (ball.isRecording)
                 {
-                    hasRecordingBall = true;
+                    needsBlinkRepaint = true;
                 }
                 
                 // 檢查是否有錄製的事件需要回放（只在不在 recording 狀態時回放，避免與手動拖動衝突）
@@ -381,27 +403,33 @@ void PlugDataCustomObjectAudioProcessorEditor::timerCallback()
                     if (event != nullptr)
                     {
                         // 更新球的位置（只在位置改變時更新，節省資源）
+                        // This uses the new epsilon check inside setBallPosition
                         audioProcessor.jyPad.setBallPosition(ball.id, event->x, event->y);
-                        needsRepaint = true;
                     }
                 }
             }
         }
         
-        if (hasRecordingBall || needsRepaint)
+        // Only repaint if we are recording (for blink animation)
+        // Regular movement is handled by setBallPosition callback.
+        if (needsBlinkRepaint)
         {
             jyPadEditor.repaint();
         }
     }
     else
     {
-        midiTimeLabel.setText("1.1.000", juce::dontSendNotification);
-        timeCodeLabel.setText("0:00.000", juce::dontSendNotification);
-        bpmInfoLabel.setText("-- BPM", juce::dontSendNotification);
+        // Idle/Invalid state updates
+        if (midiTimeLabel.getText() != "1.1.000") midiTimeLabel.setText("1.1.000", juce::dontSendNotification);
+        if (timeCodeLabel.getText() != "0:00.000") timeCodeLabel.setText("0:00.000", juce::dontSendNotification);
+        if (bpmInfoLabel.getText() != "-- BPM") bpmInfoLabel.setText("-- BPM", juce::dontSendNotification);
         
-        midiTimeLabel.setColour(juce::Label::textColourId, juce::Colour(0xff333333));
-        timeCodeLabel.setColour(juce::Label::textColourId, juce::Colour(0xff333333));
-        bpmInfoLabel.setColour(juce::Label::textColourId, juce::Colours::grey);
+        if (midiTimeLabel.findColour(juce::Label::textColourId) != juce::Colour(0xff333333))
+        {
+            midiTimeLabel.setColour(juce::Label::textColourId, juce::Colour(0xff333333));
+            timeCodeLabel.setColour(juce::Label::textColourId, juce::Colour(0xff333333));
+            bpmInfoLabel.setColour(juce::Label::textColourId, juce::Colours::grey);
+        }
     }
 }
 

@@ -85,8 +85,16 @@ void JYPad::setBallPosition(int ballId, float x, float y)
     if (ball != nullptr)
     {
         // 限制座標範圍
-        ball->x = juce::jlimit(-1.0f, 1.0f, x);
-        ball->y = juce::jlimit(-1.0f, 1.0f, y);
+        // Limit coordinate range
+        float newX = juce::jlimit(-1.0f, 1.0f, x);
+        float newY = juce::jlimit(-1.0f, 1.0f, y);
+
+        // Optimization: Check if position actually changed (epsilon check)
+        if (std::abs(ball->x - newX) < 1e-5f && std::abs(ball->y - newY) < 1e-5f)
+            return;
+
+        ball->x = newX;
+        ball->y = newY;
 
         // 觸發回調
         if (onBallMoved)
@@ -468,7 +476,6 @@ void JYPad::recordEvent(int ballId, double midiTime, float x, float y, float z)
     
     // 添加事件到對應球的錄製序列
     auto& events = recordedEvents[ballId];
-    events.emplace_back(ballId, midiTime, x, y, z);
     
     // 檢查是否需要排序：只有當新事件的時間小於等於最後一個事件的時間時才需要排序
     // 大多數情況下，錄製是按時間順序進行的，所以不需要排序
@@ -481,6 +488,7 @@ void JYPad::recordEvent(int ballId, double midiTime, float x, float y, float z)
         }
     }
     
+    // 執行插入（只插入一次！）
     events.emplace_back(ballId, midiTime, x, y, z);
     
     // 只有在需要時才排序
@@ -527,20 +535,20 @@ void JYPad::tweenToNext(int ballId, double currentMidiTime, int numSteps)
     
     auto& events = it->second;
     
-    // 找到下一個事件（時間大於當前時間的第一個事件）
+    // 優化：使用二分查找找到第一個大於 currentMidiTime 的元素
+    // std::upper_bound 正好返回第一個大於 value 的元素 iterator
+    auto itEvent = std::upper_bound(events.begin(), events.end(), currentMidiTime,
+        [](double time, const RecordedEvent& event) {
+            return time < event.midiTime;
+        });
+        
     const RecordedEvent* nextEvent = nullptr;
     double nextTime = -1.0;
     
-    for (size_t i = 0; i < events.size(); ++i)
+    if (itEvent != events.end())
     {
-        if (events[i].midiTime > currentMidiTime)
-        {
-            if (nextTime < 0.0 || events[i].midiTime < nextTime)
-            {
-                nextTime = events[i].midiTime;
-                nextEvent = &events[i];
-            }
-        }
+        nextEvent = &(*itEvent);
+        nextTime = nextEvent->midiTime;
     }
     
     // 如果沒有下一個事件，無法進行插值
@@ -583,27 +591,21 @@ const RecordedEvent* JYPad::getEventAtTime(int ballId, double midiTime) const
     
     const auto& events = it->second;
     
-    // 找到最接近當前時間的事件（小於等於當前時間的最大事件）
-    // 使用二分查找優化（因為事件已按時間排序）
-    const RecordedEvent* closestEvent = nullptr;
-    double closestTime = -1.0;
+    // 優化：使用二分查找找到第一個大於 midiTime 的元素
+    // std::upper_bound 返回第一個大於 value 的元素
+    // 我們想要找的是 <= midiTime 的最後一個元素，所以應該是 upper_bound 的前一個
+    auto upper = std::upper_bound(events.begin(), events.end(), midiTime,
+        [](double time, const RecordedEvent& event) {
+            return time < event.midiTime;
+        });
     
-    // 線性搜索（因為需要找到 <= midiTime 的最大值）
-    for (const auto& event : events)
+    const RecordedEvent* closestEvent = nullptr;
+    
+    // 如果 upper 是 begin，表示所有元素都大於 midiTime，沒有符合條件的
+    if (upper != events.begin())
     {
-        if (event.midiTime <= midiTime)
-        {
-            if (event.midiTime > closestTime)
-            {
-                closestTime = event.midiTime;
-                closestEvent = &event;
-            }
-        }
-        else
-        {
-            // 事件已按時間排序，如果當前事件時間 > midiTime，後面的也會更大
-            break;
-        }
+        // upper 的前一個元素就是 <= midiTime 的最後一個元素（也是最大的那個）
+        closestEvent = &(*(upper - 1));
     }
     
     // 如果找到了事件，檢查位置是否與當前球的位置不同
@@ -648,13 +650,16 @@ const RecordedEvent* JYPad::getLastEventBeforeTime(int ballId, double midiTime) 
     
     const auto& events = it->second;
     
-    // 從後往前找，找到第一個時間 <= midiTime 的事件
-    for (auto rit = events.rbegin(); rit != events.rend(); ++rit)
+    // 優化：使用二分查找代替線性搜索
+    // 我們找 <= midiTime 的最後一個元素
+    auto upper = std::upper_bound(events.begin(), events.end(), midiTime,
+        [](double time, const RecordedEvent& event) {
+            return time < event.midiTime;
+        });
+        
+    if (upper != events.begin())
     {
-        if (rit->midiTime <= midiTime)
-        {
-            return &(*rit);
-        }
+        return &(*(upper - 1));
     }
     
     // 如果所有事件的時間都大於 midiTime，返回 nullptr

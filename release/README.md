@@ -56,6 +56,43 @@ ls -la ~/Library/Audio/Plug-Ins/Components/JYPad.component
    - 在插件列表中尋找 "JYPad"
    - 載入插件即可使用
 
+## Standalone 應用程式權限問題
+
+如果您將 Standalone 應用程式複製到另一台 Mac 上，可能會遇到「無法打開」的問題。這是 macOS 的安全機制（Gatekeeper）。
+
+### 快速解決方法
+
+在**接收應用程式的 Mac** 上執行：
+
+```bash
+# 移除隔離屬性
+xattr -dr com.apple.quarantine /path/to/JYPad.app
+
+# 例如，如果應用程式在 Downloads 資料夾：
+xattr -dr com.apple.quarantine ~/Downloads/JYPad.app
+```
+
+或者使用我們提供的腳本：
+
+```bash
+chmod +x fix_permissions.sh
+./fix_permissions.sh /path/to/JYPad.app
+```
+
+### 其他方法
+
+1. **通過系統偏好設定**：
+   - 嘗試打開應用程式
+   - 前往「系統偏好設定」→「安全性與隱私」
+   - 點擊「仍要打開」
+
+2. **使用右鍵選單**：
+   - 按住 `Control` 鍵（或右鍵點擊）應用程式
+   - 選擇「打開」
+   - 在彈出的對話框中點擊「打開」
+
+詳細說明請參考 `FIX_MAC_PERMISSIONS.md`。
+
 ## 使用說明
 
 ### 基本操作
@@ -137,6 +174,7 @@ ls -la ~/Library/Audio/Plug-Ins/Components/JYPad.component
 
 1. 直接運行 `build/PlugDataCustomObject_artefacts/Standalone/JYPad.app`
 2. 通過 MIDI 或 OSC 與 PlugData 通信
+3. **注意**：如果從另一台 Mac 複製，請參考上面的「Standalone 應用程式權限問題」部分
 
 ## 故障排除
 
@@ -156,6 +194,10 @@ ls -la ~/Library/Audio/Plug-Ins/Components/JYPad.component
 3. **重新掃描插件**：
    - 在 DAW 中重新掃描插件
    - 或重啟 DAW
+
+### Standalone 應用程式無法打開
+
+請參考上面的「Standalone 應用程式權限問題」部分。
 
 ### OSC 無法連接
 
@@ -181,4 +223,3 @@ ls -la ~/Library/Audio/Plug-Ins/Components/JYPad.component
 ---
 
 **JYPad v0.1.0** - 強大的 2D 控制器插件
-

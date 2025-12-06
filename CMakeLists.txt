@@ -14,11 +14,12 @@ juce_add_plugin(PlugDataCustomObject
     COMPANY_NAME "YourCompany"
     PLUGIN_MANUFACTURER_CODE YrCo
     PLUGIN_CODE PDCu
-    FORMATS AU VST3 Standalone
+    FORMATS AU VST3 Standalone AAX
     PRODUCT_NAME "JYPad"
     DESCRIPTION "A 2D XY Pad controller with multiple draggable balls for PlugData"
     VERSION 0.1.0
     PLUGIN_MANUFACTURER "YourCompany"
+    AAX_CATEGORY MIDIEffect  # AAX 插件類別：MIDI 效果
 )
 
 # 明確禁用 VST2 以避免衝突

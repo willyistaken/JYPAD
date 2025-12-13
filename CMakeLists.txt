@@ -2,9 +2,43 @@ cmake_minimum_required(VERSION 3.22)
 
 project(PlugDataCustomObject VERSION 0.1.0)
 
+# -----------------------------------------------------------------------------
+# macOS 環境與編譯器限制設定 (針對 User 環境: Apple Clang 17.0.0 + CLI Tools)
+# -----------------------------------------------------------------------------
+if(APPLE)
+    # 0. 禁止 Xcode Generator (避免開啟 Xcode)
+    if(CMAKE_GENERATOR MATCHES "Xcode")
+        message(FATAL_ERROR "此專案設定為避免開啟 Xcode。請使用 'Unix Makefiles' 或 'Ninja' Generator。\n請執行: cmake -G \"Unix Makefiles\" ..")
+    endif()
+
+    # 1. 架構限制：僅構建 arm64 (避免 Universal Build 尋找 x86 庫)
+    set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "Build architectures for macOS" FORCE)
+
+    # 2. SDK 限制：強制使用 Command Line Tools SDK，避免觸發 Xcode App 啟動
+    set(CLI_SDK_PATH "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk")
+    if(EXISTS "${CLI_SDK_PATH}")
+        set(CMAKE_OSX_SYSROOT "${CLI_SDK_PATH}" CACHE PATH "Sysroot used for OSX support" FORCE)
+        message(STATUS "Using Command Line Tools SDK: ${CMAKE_OSX_SYSROOT}")
+    endif()
+
+    # 3. 編譯器路徑提示 (優先使用 /usr/bin/clang++)
+    if(NOT DEFINED CMAKE_CXX_COMPILER)
+        set(CMAKE_CXX_COMPILER "/usr/bin/clang++")
+    endif()
+endif()
+
+
 # 設定 C++ 標準
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+if(APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "AppleClang")
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "17.0.0")
+        message(STATUS "Compiler Check: AppleClang version ${CMAKE_CXX_COMPILER_VERSION} (Requirement: >= 17.0.0)")
+    else()
+        message(STATUS "Compiler Check: Valid AppleClang version ${CMAKE_CXX_COMPILER_VERSION}")
+    endif()
+endif()
 
 # 添加 JUCE
 add_subdirectory(JUCE)

@@ -11,6 +11,7 @@ jobs:
   build_macos:
     name: macOS Build
     runs-on: macos-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -18,17 +19,19 @@ jobs:
           submodules: recursive
 
       - name: Install JUCE (if not submodule)
-        # Fallback: if JUCE dir doesn't exist, clone it (assuming JUCE 7)
         run: |
           if [ ! -d "JUCE" ]; then
             git clone https://github.com/juce-framework/JUCE.git --branch 7.0.9 --depth 1
           fi
 
       - name: Configure CMake
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
 
       - name: Build
-        run: cmake --build build --config Release --parallel 4
+        run: cmake --build build --parallel 4
 
       - name: Upload Artifacts (AU)
         uses: actions/upload-artifact@v4
@@ -45,6 +48,7 @@ jobs:
   build_windows:
     name: Windows Build
     runs-on: windows-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -59,7 +63,10 @@ jobs:
           fi
 
       - name: Configure CMake
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+        run: |
+          cmake -B build \
+            -G "Visual Studio 17 2022" \
+            -A x64
 
       - name: Build
         run: cmake --build build --config Release --parallel 4
@@ -73,6 +80,7 @@ jobs:
   build_linux:
     name: Linux Build
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -88,16 +96,26 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev libx11-dev libxinerama-dev libxext-dev libfreetype6-dev libwebkit2gtk-4.0-dev libglu1-mesa-dev libjack-jackd2-dev curl
+          sudo apt-get install -y \
+            libasound2-dev \
+            libx11-dev \
+            libxinerama-dev \
+            libxext-dev \
+            libfreetype6-dev \
+            libwebkit2gtk-4.0-dev \
+            libglu1-mesa-dev \
+            libjack-jackd2-dev \
+            curl
 
       - name: Configure CMake
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: cmake --build build --config Release --parallel 4
+        run: cmake --build build --parallel 4
 
       - name: Upload Artifacts (VST3)
-        using: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4
         with:
           name: JYPad-Linux-VST3
           path: build/PlugDataCustomObject_artefacts/Release/VST3/JYPad.vst3
+
